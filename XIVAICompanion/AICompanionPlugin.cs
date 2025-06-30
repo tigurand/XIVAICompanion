@@ -487,11 +487,11 @@ namespace XIVAICompanion
             ImGui.Text("AI Name:");
             ImGui.InputText("##ainame", ref _aiNameBuffer, 32);
             ImGui.Spacing();
-            ImGui.Checkbox("Let System Prompt define AI's name", ref _letSystemPromptHandleAINameBuffer);
+            ImGui.Checkbox("Prioritize System Prompt to define AI's name", ref _letSystemPromptHandleAINameBuffer);
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip("CHECKED: The System Prompt below is solely responsible for how the AI identifies itself.\n" +
-                                 "UNCHECKED: The AI's name will be programmatically added to the System Prompt.");
+                ImGui.SetTooltip("CHECKED: The System Prompt below will be prioritized for how the AI identifies itself. Still have small chance to behave abnormally if you set different name above.\n" +
+                                 "UNCHECKED: The AI's name will use the setting above. May behave abnormally if you have additional prompt for name.");
             }
             ImGui.Spacing();
 
