@@ -1,0 +1,9 @@
+{
+  "Author": "Lucille",
+  "Name": "XIV AI Companion",
+  "Description": "An AI companion for FFXIV, accessible through the in-game chat. Configuration requires Google AI API key.",
+  "Punchline": "If you're a loner like me, you probably want a personal AI companion.",
+  "InternalName": "XIVAICompanion",
+  "Tags": ["chat", "ai"],
+  "RepoUrl": "https://github.com/tigurand/XIVAICompanion"
+}
