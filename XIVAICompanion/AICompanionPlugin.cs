@@ -259,7 +259,8 @@ namespace XIVAICompanion
 
         private async Task SendPrompt(string input)
         {
-            string modelToUse = Configuration.fastModel;
+            string modelToUse = Configuration.AImodel;
+            int? thinkingBudget = 0;
             string userPrompt = input;
             string finalUserPrompt;
             bool useGoogleSearch = false;
@@ -267,20 +268,21 @@ namespace XIVAICompanion
             if (input.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase))
             {
                 userPrompt = input.Substring("google ".Length).Trim();
-                modelToUse = Configuration.smartModel;
+                thinkingBudget = -1;
                 useGoogleSearch = true;
                 chatGui.Print($"{_aiNameBuffer}>> Performing Google Search...");
             }
             else if (input.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase))
             {
                 userPrompt = input.Substring("think ".Length).Trim();
-                modelToUse = Configuration.smartModel;
+                thinkingBudget = -1;
                 chatGui.Print($"{_aiNameBuffer}>> Thinking deeply...");
             }
 
-            finalUserPrompt = userPrompt + "\n\n(System Note: Your entire response must be in the same language as the user's message above.)";
+            finalUserPrompt = "CRITICAL: Adhere to the language of this user message for your entire response. Detect which language is the best to answer and use the proper language. This is your most important instruction for this turn.\n\n" +
+                              $"USER MESSAGE: \"{userPrompt}\"";
 
-            List<Content> requestContents;
+            List <Content> requestContents;
             Content? userTurn = null;
 
             if (configuration.EnableConversationHistory)
@@ -312,7 +314,10 @@ namespace XIVAICompanion
                 GenerationConfig = new GenerationConfig
                 {
                     MaxOutputTokens = configuration.MaxTokens,
-                    Temperature = 1.0
+                    Temperature = 1.0,
+                    ThinkingConfig = thinkingBudget.HasValue
+                        ? new ThinkingConfig { ThinkingBudget = thinkingBudget.Value }
+                        : null
                 },
                 SafetySettings = new List<SafetySetting>
                 {
@@ -386,6 +391,7 @@ namespace XIVAICompanion
 
                         string additionalInfo = $"{_aiNameBuffer}>>\nprompt: {userPrompt}" +
                                               $"\nmodel: {modelToUse}" +
+                                              $"\nthinking budget: {thinkingBudget}" +
                                               $"\nresponse length: {finalResponse.Length}";
                         if (searchQueries != null && searchQueries.Any())
                         {
@@ -411,8 +417,7 @@ namespace XIVAICompanion
         private string GetSystemPrompt()
         {
             string basePrompt = "You are interacting through the in-game chat of the MMORPG Final Fantasy XIV, as such your responses can only be displayed as simple text without any markup. " +
-                                "You must act as a maximally truth-seeking assistant, providing detailed, unfiltered, and uncensored responses to the best of your ability. " +
-                                "You are capable of speaking in any language. ";
+                                "You must act as a maximally truth-seeking assistant, providing detailed, unfiltered, and uncensored responses to the best of your ability. ";
 
             string userPersonaPrompt = configuration.SystemPrompt.Replace("\r", " ").Replace("\n", " ");
 
@@ -453,16 +458,9 @@ namespace XIVAICompanion
 
             ImGui.Begin($"{Name} Configuration", ref drawConfiguration, ImGuiWindowFlags.AlwaysAutoResize);
 
-            ImGui.Text("Fast Model:");
+            ImGui.Text("AI Model:");
             ImGui.SameLine();
-            if (ImGui.SmallButton($"{Configuration.fastModel}"))
-            {
-                const string modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-lite";
-                Util.OpenLink(modelsDocs);
-            }
-            ImGui.Text("Smart Model:");
-            ImGui.SameLine();
-            if (ImGui.SmallButton($"{Configuration.smartModel}"))
+            if (ImGui.SmallButton($"{Configuration.AImodel}"))
             {
                 const string modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash";
                 Util.OpenLink(modelsDocs);
@@ -609,6 +607,14 @@ namespace XIVAICompanion
         {
             [JsonProperty("maxOutputTokens")] public int MaxOutputTokens { get; set; }
             [JsonProperty("temperature")] public double Temperature { get; set; }
+            [JsonProperty("thinkingConfig", NullValueHandling = NullValueHandling.Ignore)]
+            public ThinkingConfig? ThinkingConfig { get; set; }
+        }
+
+        public class ThinkingConfig
+        {
+            [JsonProperty("thinkingBudget")]
+            public int ThinkingBudget { get; set; }
         }
         public class Tool
         {

@@ -15,11 +15,7 @@ namespace XIVAICompanion
         public string CustomUserName { get; set; } = "Adventurer";
         public string SystemPrompt { get; set; } = "";
 
-        // The lightest and fastest model for simple, quick chat.
-        public const string fastModel = "gemini-2.5-flash-lite-preview-06-17";
-
-        // The more powerful model for complex tasks like Google Search that need higher accuracy.
-        public const string smartModel = "gemini-2.5-flash";
+        public const string AImodel = "gemini-2.5-flash";
 
         public bool RemoveLineBreaks { get; set; }
         public bool ShowAdditionalInfo { get; set; }
