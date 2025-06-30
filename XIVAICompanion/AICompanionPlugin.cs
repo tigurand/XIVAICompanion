@@ -242,7 +242,18 @@ namespace XIVAICompanion
             if (configuration.ShowPrompt)
             {
                 string characterName = GetPlayerDisplayName();
-                chatGui.Print($"{characterName}: {args}");
+                string promptToDisplay = args;
+
+                if (args.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase))
+                {
+                    promptToDisplay = args.Trim().Substring("google ".Length).Trim();
+                }
+                else if (args.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+                {
+                    promptToDisplay = args.Trim().Substring("think ".Length).Trim();
+                }
+
+                chatGui.Print($"{characterName}: {promptToDisplay}");
             }
 
             Task.Run(() => SendPrompt(args));
