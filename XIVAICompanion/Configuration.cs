@@ -5,7 +5,8 @@ namespace XIVAICompanion
 {
     public class Configuration : IPluginConfiguration
     {
-        public int Version { get; set; }        
+        public int Version { get; set; }
+        public string AImodel { get; set; } = "gemini-2.5-flash";
         public string ApiKey { get; set; } = "";
         public int MaxTokens { get; set; }
 
@@ -15,15 +16,13 @@ namespace XIVAICompanion
         public string CustomUserName { get; set; } = "Adventurer";
         public string SystemPrompt { get; set; } = "";
 
-        public const string AImodel = "gemini-2.5-flash";
-
         public bool RemoveLineBreaks { get; set; }
         public bool ShowAdditionalInfo { get; set; }
         public bool ShowPrompt { get; set; }
         public bool GreetOnLogin { get; set; } = true;
-        public bool EnableConversationHistory { get; set; } = true;        
+        public bool EnableConversationHistory { get; set; } = true;
 
-        private IDalamudPluginInterface pluginInterface = null!;              
+        private IDalamudPluginInterface pluginInterface = null!;
 
         public void Initialize(IDalamudPluginInterface pInterface)
         {

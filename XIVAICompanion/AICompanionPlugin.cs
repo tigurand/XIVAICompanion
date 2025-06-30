@@ -39,6 +39,8 @@ namespace XIVAICompanion
 
         private bool drawConfiguration;
 
+        private readonly string[] _availableModels = { "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17" };
+        private int _selectedModelIndex;
         private string _apiKeyBuffer = string.Empty;
         private int _maxTokensBuffer;
 
@@ -51,7 +53,7 @@ namespace XIVAICompanion
         private bool _showPromptBuffer;
         private string _localPlayerName = string.Empty;
         private bool _removeLineBreaksBuffer;
-        private bool _showAdditionalInfoBuffer;        
+        private bool _showAdditionalInfoBuffer;
         private bool _greetOnLoginBuffer;
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
@@ -155,6 +157,11 @@ namespace XIVAICompanion
 
         private void LoadConfigIntoBuffers()
         {
+            _selectedModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
+            if (_selectedModelIndex == -1)
+            {
+                _selectedModelIndex = 0;
+            }
             _apiKeyBuffer = configuration.ApiKey;
             _maxTokensBuffer = configuration.MaxTokens > 0 ? configuration.MaxTokens : 1024;
             _aiNameBuffer = configuration.AIName;
@@ -259,7 +266,7 @@ namespace XIVAICompanion
 
         private async Task SendPrompt(string input)
         {
-            string modelToUse = Configuration.AImodel;
+            string modelToUse = configuration.AImodel;
             int? thinkingBudget = 0;
             string userPrompt = input;
             string finalUserPrompt;
@@ -458,15 +465,6 @@ namespace XIVAICompanion
 
             ImGui.Begin($"{Name} Configuration", ref drawConfiguration, ImGuiWindowFlags.AlwaysAutoResize);
 
-            ImGui.Text("AI Model:");
-            ImGui.SameLine();
-            if (ImGui.SmallButton($"{Configuration.AImodel}"))
-            {
-                const string modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash";
-                Util.OpenLink(modelsDocs);
-            }
-            ImGui.Spacing();
-
             ImGui.Text("API Key for Google AI:");
             ImGui.InputText("##apikey", ref _apiKeyBuffer, 60, ImGuiInputTextFlags.Password);
             ImGui.SameLine();
@@ -479,6 +477,23 @@ namespace XIVAICompanion
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("Controls the maximum length of the response from the AI.");
+            }
+            ImGui.Spacing();
+            ImGui.SetNextItemWidth(300);
+            ImGui.Combo("AI Model", ref _selectedModelIndex, _availableModels, _availableModels.Length);
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Details"))
+            {
+                string modelsDocs = "";
+                if (_selectedModelIndex == 0)
+                {
+                    modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash";
+                }
+                else if (_selectedModelIndex == 1)
+                {
+                    modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-lite";
+                }
+                Util.OpenLink(modelsDocs);
             }
 
             ImGui.Separator();
@@ -542,6 +557,7 @@ namespace XIVAICompanion
             ImGui.Separator();
             if (ImGui.Button("Save and Close"))
             {
+                configuration.AImodel = _availableModels[_selectedModelIndex];
                 configuration.ApiKey = _apiKeyBuffer;
                 configuration.MaxTokens = _maxTokensBuffer;
                 if (string.IsNullOrWhiteSpace(_aiNameBuffer))
