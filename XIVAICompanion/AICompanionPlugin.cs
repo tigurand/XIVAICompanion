@@ -148,9 +148,6 @@ namespace XIVAICompanion
                 case 1:
                     return string.IsNullOrWhiteSpace(configuration.CustomUserName) ? "Adventurer" : configuration.CustomUserName;
 
-                case 2:
-                    return string.IsNullOrEmpty(_localPlayerName) ? "Adventurer" : _localPlayerName;
-
                 default:
                     return string.IsNullOrEmpty(_localPlayerName) ? "Adventurer" : _localPlayerName;
             }
@@ -437,9 +434,6 @@ namespace XIVAICompanion
                     string customName = string.IsNullOrWhiteSpace(configuration.CustomUserName) ? "Adventurer" : configuration.CustomUserName;
                     userNameInstruction = $"You must address the user, your conversation partner, as {customName}. ";
                     break;
-                case 2: // System Prompt
-                        // Do nothing, let the user's prompt handle it.
-                    break;
             }
 
             return $"{basePrompt}{aiNameInstruction}{userNameInstruction}{userPersonaPrompt}";
@@ -503,14 +497,25 @@ namespace XIVAICompanion
 
             ImGui.Text("How should the AI address you?");
             ImGui.RadioButton("Player Name", ref _addressingModeBuffer, 0);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("You can also additionally use System Prompt to override this.\n" +
+                                 "Example:\n" +
+                                 "Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
+            }
             ImGui.RadioButton("Custom Name", ref _addressingModeBuffer, 1);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("You can also additionally use System Prompt to override this.\n" +
+                                 "Example:\n" +
+                                 "Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
+            }
             if (_addressingModeBuffer == 1)
             {
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(150);
                 ImGui.InputText("##customname", ref _customUserNameBuffer, 32);
             }
-            ImGui.RadioButton("Let System Prompt decide", ref _addressingModeBuffer, 2);
             ImGui.Spacing();
 
             ImGui.Text("System Prompt (Persona):");
