@@ -73,6 +73,7 @@ namespace XIVAICompanion
             InitializeConversation();
 
             dalamudPluginInterface.UiBuilder.Draw += DrawConfiguration;
+            dalamudPluginInterface.UiBuilder.OpenMainUi += OpenConfig;
             dalamudPluginInterface.UiBuilder.OpenConfigUi += OpenConfig;            
 
             CommandManager.AddHandler(commandName, new CommandInfo(AICommand)
@@ -569,6 +570,7 @@ namespace XIVAICompanion
         {
             CommandManager.RemoveHandler(commandName);
             PluginInterface.UiBuilder.Draw -= DrawConfiguration;
+            PluginInterface.UiBuilder.OpenMainUi -= OpenConfig;
             PluginInterface.UiBuilder.OpenConfigUi -= OpenConfig;
             ClientState.Login -= OnLogin;
             ClientState.Logout -= OnLogout;
