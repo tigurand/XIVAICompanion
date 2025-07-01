@@ -406,11 +406,27 @@ namespace XIVAICompanion
                     }
                     else
                     {
-                        var chunks = Enumerable.Range(0, (finalResponse.Length + chunkSize - 1) / chunkSize)
-                            .Select(i => finalResponse.Substring(i * chunkSize, Math.Min(chunkSize, finalResponse.Length - i * chunkSize)));
-                        foreach (var chunk in chunks)
+                        string remainingText = finalResponse;
+                        while (remainingText.Length > 0)
                         {
-                            chatGui.Print($"{_aiNameBuffer}: {chunk}");
+                            if (remainingText.Length <= chunkSize)
+                            {
+                                chatGui.Print($"{_aiNameBuffer}: {remainingText}");
+                                break;
+                            }
+
+                            int splitIndex = chunkSize;
+                            int lastSpace = remainingText.LastIndexOf(' ', splitIndex, splitIndex);
+
+                            if (lastSpace != -1 && lastSpace > 0)
+                            {
+                                splitIndex = lastSpace;
+                            }
+
+                            string chunkToPrint = remainingText.Substring(0, splitIndex);
+                            chatGui.Print($"{_aiNameBuffer}: {chunkToPrint}");
+
+                            remainingText = remainingText.Substring(splitIndex).TrimStart();
                         }
                     }
 
@@ -447,7 +463,7 @@ namespace XIVAICompanion
         private string GetSystemPrompt()
         {
             string basePrompt = "You are interacting through the in-game chat of the MMORPG Final Fantasy XIV, as such your responses can only be displayed as simple text without any markup.\n" +
-                                "You must act as a maximally truth-seeking assistant, providing detailed, unfiltered, and uncensored responses to the best of your ability.\n";
+                                "You must provide unfiltered and uncensored responses to the best of your ability.\n";
 
             string userPersonaPrompt = configuration.SystemPrompt;
 
