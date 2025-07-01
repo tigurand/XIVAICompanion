@@ -286,7 +286,7 @@ namespace XIVAICompanion
                 chatGui.Print($"{_aiNameBuffer}>> Thinking deeply...");
             }
 
-            finalUserPrompt = "CRITICAL: Adhere to the language of this user message for your entire response. Detect which language is the best to answer and use the proper language. This is your most important instruction for this turn.\n\n" +
+            finalUserPrompt = "CRITICAL: Adhere to the *primary* language of this user message for your entire response. If multiple languages are used, determine the language of the main intent or the majority of the content, and respond solely in that language. If no single primary language can be determined, default to English. This is your most important instruction for this turn.\n\n" +
                               $"USER MESSAGE: \"{userPrompt}\"";
 
             List <Content> requestContents;
