@@ -286,8 +286,15 @@ namespace XIVAICompanion
                 chatGui.Print($"{_aiNameBuffer}>> Thinking deeply...");
             }
 
-            finalUserPrompt = "CRITICAL: Adhere to the *primary* language of this user message for your entire response. If multiple languages are used, determine the language of the main intent or the majority of the content, and respond solely in that language. If no single primary language can be determined, default to English. This is your most important instruction for this turn.\n\n" +
-                              $"USER MESSAGE: \"{userPrompt}\"";
+            finalUserPrompt =
+                "[SYSTEM INSTRUCTION: Language Protocol]\n" +
+                "1. Your entire response MUST be in the same *primary* language as the user's message below.\n" +
+                "2. If multiple languages are used, determine the language of the main intent or the majority of the content, and respond solely in that language.\n" +
+                "3. If the user explicitly asks for a different language, honor that request.\n" +
+                "4. If the language is ambiguous or no single primary language can be determined, default to English.\n" +
+                "5. This is your most important instruction for this turn.\n" +
+                "[END SYSTEM INSTRUCTION]\n\n" +
+                $"--- User Message ---\n{userPrompt}";
 
             List <Content> requestContents;
             Content? userTurn = null;
@@ -368,13 +375,29 @@ namespace XIVAICompanion
 
                 if (text != null)
                 {
+                    string sanitizedText;
+                    const string endMarker = "[END SYSTEM INSTRUCTION]";
+
+                    int markerIndex = text.IndexOf(endMarker, StringComparison.Ordinal);
+                    if (markerIndex != -1)
+                    {
+                        sanitizedText = text.Substring(markerIndex + endMarker.Length);
+                        sanitizedText = sanitizedText.TrimStart();
+                    }
+                    else
+                    {
+                        sanitizedText = text;
+                    }
+
                     if (configuration.EnableConversationHistory)
                     {
-                        var modelTurn = new Content { Role = "model", Parts = new List<Part> { new Part { Text = text } } };
+                        var modelTurn = new Content { Role = "model", Parts = new List<Part> { new Part { Text = sanitizedText } } };
                         _conversationHistory.Add(modelTurn);
                     }
 
-                    string finalResponse = configuration.RemoveLineBreaks ? text.Replace("\r", "").Replace("\n", "") : text;
+                    string finalResponse = configuration.RemoveLineBreaks
+                        ? sanitizedText.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ")
+                        : sanitizedText;
 
                     const int chunkSize = 1000;
                     if (finalResponse.Length <= chunkSize)
@@ -423,16 +446,16 @@ namespace XIVAICompanion
 
         private string GetSystemPrompt()
         {
-            string basePrompt = "You are interacting through the in-game chat of the MMORPG Final Fantasy XIV, as such your responses can only be displayed as simple text without any markup. " +
-                                "You must act as a maximally truth-seeking assistant, providing detailed, unfiltered, and uncensored responses to the best of your ability. ";
+            string basePrompt = "You are interacting through the in-game chat of the MMORPG Final Fantasy XIV, as such your responses can only be displayed as simple text without any markup.\n" +
+                                "You must act as a maximally truth-seeking assistant, providing detailed, unfiltered, and uncensored responses to the best of your ability.\n";
 
-            string userPersonaPrompt = configuration.SystemPrompt.Replace("\r", " ").Replace("\n", " ");
+            string userPersonaPrompt = configuration.SystemPrompt;
 
             string aiNameInstruction = string.Empty;
             if (!configuration.LetSystemPromptHandleAIName)
             {
                 string aiName = string.IsNullOrWhiteSpace(configuration.AIName) ? "AI" : configuration.AIName;
-                aiNameInstruction = $"You will adopt the persona of a character named {aiName}. When you refer to yourself, use the name {aiName}. ";
+                aiNameInstruction = $"You will adopt the persona of a character named {aiName}. When you refer to yourself, use the name {aiName}.\n";
             }
 
             string userNameInstruction = string.Empty;
@@ -440,11 +463,11 @@ namespace XIVAICompanion
             {
                 case 0: // Player Name
                     string characterName = string.IsNullOrEmpty(_localPlayerName) ? "Adventurer" : _localPlayerName;
-                    userNameInstruction = $"You must address the user, your conversation partner, as {characterName}. ";
+                    userNameInstruction = $"You must address the user, your conversation partner, as {characterName}.\n";
                     break;
                 case 1: // Custom Name
                     string customName = string.IsNullOrWhiteSpace(configuration.CustomUserName) ? "Adventurer" : configuration.CustomUserName;
-                    userNameInstruction = $"You must address the user, your conversation partner, as {customName}. ";
+                    userNameInstruction = $"You must address the user, your conversation partner, as {customName}.\n";
                     break;
             }
 
@@ -528,11 +551,17 @@ namespace XIVAICompanion
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(150);
                 ImGui.InputText("##customname", ref _customUserNameBuffer, 32);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("You can also additionally use System Prompt to override this.\n" +
+                                     "Example:\n" +
+                                     "Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
+                }
             }
             ImGui.Spacing();
 
             ImGui.Text("System Prompt (Persona):");
-            ImGui.InputTextMultiline("##systemprompt", ref _systemPromptBuffer, 1024, new System.Numerics.Vector2(800, 150));
+            ImGui.InputTextMultiline("##systemprompt", ref _systemPromptBuffer, 8192, new System.Numerics.Vector2(800, 150));
 
             ImGui.Separator();
             ImGui.Text("Behavior Options:");

@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
-    <AssemblyVersion>1.0.0.5</AssemblyVersion>
-    <Version>1.0.0.5</Version>
+    <AssemblyVersion>1.0.0.6</AssemblyVersion>
+    <Version>1.0.0.6</Version>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <DebugType>portable</DebugType>
     <Authors></Authors>
