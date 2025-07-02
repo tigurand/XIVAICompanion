@@ -14,7 +14,7 @@ Install and enable XIV AI Companion.
 It is now using Gemini because... no real reason, just personal preference based on my wallet condition.<br />
 You can use the API for free, but you still need to input payment information to create API, then you can disable billing to change it into free tier.
 
-You can set the name of your companion and how your companion will address you. You can also use prompt for advanced persona. This is unfiltered, so if you don't want to see certain answers from your companion, be careful with your prompt.<br />
+You can set the name of your companion and how your companion will address you. You can also use prompt for advanced persona. This is unfiltered, so if you don't want to see certain answers from your companion, be careful with your prompt. Sometimes it may still get blocked by the system, but in that case, just rephrase it slightly.<br />
 Example:<br />
 ![Screenshot 2025-06-30 021947](https://github.com/user-attachments/assets/359709e7-c171-4289-a808-27923de6d848)<br />
 ![Screenshot 2025-06-30 022230](https://github.com/user-attachments/assets/f0347382-0899-47bc-9866-3954906ab219)
