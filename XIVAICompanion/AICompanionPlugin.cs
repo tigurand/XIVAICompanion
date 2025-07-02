@@ -521,7 +521,7 @@ namespace XIVAICompanion
                         }
                         if (promptTokenCount.HasValue && responseTokenCount.HasValue)
                         {
-                            infoBuilder.AppendLine($"Total Token Usage: {promptTokenCount.Value + responseTokenCount.Value}");
+                            infoBuilder.Append($"Total Token Usage: {promptTokenCount.Value + responseTokenCount.Value}");
                         }
 
                         chatGui.Print(infoBuilder.ToString());
@@ -605,7 +605,7 @@ namespace XIVAICompanion
                 }
 
                 infoBuilder.AppendLine($"Finish Reason: {finishReason ?? "N/A"}");
-                infoBuilder.AppendLine($"Block Reason: {blockReason ?? "N/A"}");
+                infoBuilder.Append($"Block Reason: {blockReason ?? "N/A"}");
 
                 chatGui.Print(infoBuilder.ToString());
             }
