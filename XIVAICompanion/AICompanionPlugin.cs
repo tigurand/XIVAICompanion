@@ -289,7 +289,7 @@ namespace XIVAICompanion
             finalUserPrompt =
                 "[SYSTEM INSTRUCTION: Language Protocol]\n" +
                 "1. Your entire response MUST be in the same *primary* language as the user's message below.\n" +
-                "2. If multiple languages are used, determine the language of the main intent or the majority of the content, and respond solely in that language.\n" +
+                "2. If multiple languages are used, first priority: determine the language of the main intent, second priority: determine the majority of the content, choose one language based on priority and respond solely in that language.\n" +
                 "3. If the user explicitly asks for a different language, honor that request.\n" +
                 "4. If the language is ambiguous or no single primary language can be determined, default to English.\n" +
                 "5. This is your most important instruction for this turn.\n" +
@@ -432,25 +432,81 @@ namespace XIVAICompanion
 
                     if (configuration.ShowAdditionalInfo)
                     {
-                        JToken? groundingMetadata = responseJson.SelectToken("candidates[0].groundingMetadata");
-                        List<string>? searchQueries = groundingMetadata?.SelectToken("webSearchQueries")?.Select(q => (string)q!).ToList();
-
-                        string additionalInfo = $"{_aiNameBuffer}>>\nprompt: {userPrompt}" +
-                                              $"\nmodel: {modelToUse}" +
-                                              $"\nthinking budget: {thinkingBudget}" +
-                                              $"\nresponse length: {finalResponse.Length}";
-                        if (searchQueries != null && searchQueries.Any())
+                        int? promptTokenCount = (int?)responseJson.SelectToken("usageMetadata.promptTokenCount");
+                        int? responseTokenCount = (int?)responseJson.SelectToken("usageMetadata.candidatesTokenCount");
+                        if (responseTokenCount == null)
                         {
-                            additionalInfo += $"\n(Sources used: {string.Join(", ", searchQueries)})";
+                            responseTokenCount = (int?)responseJson.SelectToken("usageMetadata.completionTokenCount");
                         }
-                        chatGui.Print(additionalInfo);
+
+                        var infoBuilder = new StringBuilder();
+                        infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
+                        infoBuilder.AppendLine($"Prompt: {userPrompt}");
+                        infoBuilder.AppendLine($"Model: {modelToUse}");
+                        infoBuilder.AppendLine($"Thinking Budget: {thinkingBudget ?? 0}");
+                        infoBuilder.AppendLine($"HTTP Status: {(int)response.StatusCode} - {response.StatusCode}");
+                        infoBuilder.AppendLine($"Prompt Length (chars): {userPrompt.Length}");
+                        infoBuilder.AppendLine($"Response Length (chars): {finalResponse.Length}");
+
+                        if (promptTokenCount.HasValue)
+                        {
+                            infoBuilder.AppendLine($"Prompt Token Usage: {promptTokenCount}");
+                        }
+                        if (responseTokenCount.HasValue)
+                        {
+                            infoBuilder.AppendLine($"Response Token Usage: {responseTokenCount}");
+                        }
+                        if (promptTokenCount.HasValue && responseTokenCount.HasValue)
+                        {
+                            infoBuilder.AppendLine($"Total Token Usage: {promptTokenCount.Value + responseTokenCount.Value}");
+                        }
+
+                        chatGui.Print(infoBuilder.ToString());
                     }
                 }
                 else
                 {
                     if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
+
+                    string finalErrorMessage;
                     string? blockReason = (string?)responseJson.SelectToken("promptFeedback.blockReason");
-                    chatGui.Print($"{_aiNameBuffer}>> Error: The request was rejected by the API. Reason: {blockReason ?? finishReason ?? "Unknown"}.");
+
+                    if (!string.IsNullOrEmpty(blockReason))
+                    {
+                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The prompt was blocked by the API. Reason: {blockReason}.";
+                    }
+                    else if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        finalErrorMessage = $"{_aiNameBuffer}>> Error: API rate limit reached. This could be Requests Per Minute (RPM) or Requests Per Day (RPD). Please wait or try a different model.";
+                    }
+                    else
+                    {
+                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The request was rejected by the API for an unknown reason. " +
+                                            "This may be a temporary issue. Please try again later or change the AI model.";
+                    }
+
+                    chatGui.Print(finalErrorMessage);
+
+                    if (configuration.ShowAdditionalInfo)
+                    {
+                        int? promptTokenCount = (int?)responseJson.SelectToken("usageMetadata.promptTokenCount");
+
+                        var infoBuilder = new StringBuilder();
+                        infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
+                        infoBuilder.AppendLine($"Prompt: {userPrompt}");
+                        infoBuilder.AppendLine($"Model: {modelToUse}");
+                        infoBuilder.AppendLine($"HTTP Status: {(int)response.StatusCode} - {response.StatusCode}");
+
+                        if (promptTokenCount.HasValue)
+                        {
+                            infoBuilder.AppendLine($"Prompt Token Usage: {promptTokenCount}");
+                        }
+
+                        infoBuilder.AppendLine($"Finish Reason: {finishReason ?? "N/A"}");
+                        infoBuilder.AppendLine($"Block Reason: {blockReason ?? "N/A"}");
+
+                        chatGui.Print(infoBuilder.ToString());
+                    }
                 }
             }
             catch (Exception ex)
