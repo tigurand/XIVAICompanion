@@ -20,6 +20,7 @@ namespace XIVAICompanion
         public bool ShowAdditionalInfo { get; set; }
         public bool ShowPrompt { get; set; }
         public bool GreetOnLogin { get; set; } = true;
+        public string LoginGreetingPrompt { get; set; } = "I'm back to Eorzea, please greet me.";
         public bool EnableConversationHistory { get; set; } = true;
         public bool EnableAutoFallback { get; set; } = true;
 

@@ -32,7 +32,7 @@ namespace XIVAICompanion
                     return "AI Companion for FFXIV";
                 }
                 string aiName = string.IsNullOrWhiteSpace(configuration.AIName) ? "AI" : configuration.AIName;
-                return $"{aiName}, your companion |";
+                return $"{aiName}, Your Companion |";
             }
         }
 
@@ -61,6 +61,7 @@ namespace XIVAICompanion
         private bool _removeLineBreaksBuffer;
         private bool _showAdditionalInfoBuffer;
         private bool _greetOnLoginBuffer;
+        private string _loginGreetingPromptBuffer = string.Empty;
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
         private bool _enableAutoFallbackBuffer;             
@@ -137,7 +138,7 @@ namespace XIVAICompanion
             if (configuration.GreetOnLogin && !_hasGreetedThisSession)
             {
                 _hasGreetedThisSession = true;
-                string greetingPrompt = "I just logged into the game. Please greet me.";
+                string greetingPrompt = configuration.LoginGreetingPrompt;
                 Task.Run(() => SendPrompt(greetingPrompt));
             }
         }
@@ -181,6 +182,7 @@ namespace XIVAICompanion
             _removeLineBreaksBuffer = configuration.RemoveLineBreaks;
             _showAdditionalInfoBuffer = configuration.ShowAdditionalInfo;
             _greetOnLoginBuffer = configuration.GreetOnLogin;
+            _loginGreetingPromptBuffer = configuration.LoginGreetingPrompt;
             _enableHistoryBuffer = configuration.EnableConversationHistory;
             _enableAutoFallbackBuffer = configuration.EnableAutoFallback;
         }
@@ -686,17 +688,13 @@ namespace XIVAICompanion
 
             ImGui.Separator();
             ImGui.Text("AI Name:");
-            ImGui.InputText("##ainame", ref _aiNameBuffer, 32);
-            ImGui.Spacing();
-            ImGui.Checkbox("Prioritize System Prompt to define AI's name", ref _letSystemPromptHandleAINameBuffer);
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip("CHECKED: The System Prompt below will be prioritized for how the AI identifies itself. Still have small chance to behave abnormally if you set different name above.\n" +
-                                 "UNCHECKED: The AI's name will use the setting above. May behave abnormally if you have additional prompt for name.");
-            }
-            ImGui.Spacing();
-
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(500.0f);
             ImGui.Text("How should the AI address you?");
+
+            ImGui.InputText("##ainame", ref _aiNameBuffer, 32);
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(500.0f);
             ImGui.RadioButton("Player Name", ref _addressingModeBuffer, 0);
             if (ImGui.IsItemHovered())
             {
@@ -704,6 +702,15 @@ namespace XIVAICompanion
                                  "Example:\n" +
                                  "Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
             }
+
+            ImGui.Checkbox("Prioritize System Prompt to define AI's name", ref _letSystemPromptHandleAINameBuffer);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("CHECKED: The System Prompt below will be prioritized for how the AI identifies itself. Still have small chance to behave abnormally if you set different name above.\n" +
+                                 "UNCHECKED: The AI's name will use the setting above. May behave abnormally if you have additional prompt for name.");
+            }
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(500.0f);
             ImGui.RadioButton("Custom Name", ref _addressingModeBuffer, 1);
             if (ImGui.IsItemHovered())
             {
@@ -723,6 +730,7 @@ namespace XIVAICompanion
                                      "Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
                 }
             }
+
             ImGui.Spacing();
 
             ImGui.Text("System Prompt (Persona):");
@@ -736,14 +744,24 @@ namespace XIVAICompanion
                 ImGui.SetTooltip("Show your name and messages in conversation.");
             }
             ImGui.SameLine();
-            ImGui.SetCursorPosX(300.0f);
+            ImGui.SetCursorPosX(380.0f);
             ImGui.Checkbox("Remove Line Breaks", ref _removeLineBreaksBuffer);
             ImGui.SameLine();
             ImGui.SetCursorPosX(600.0f);
             ImGui.Checkbox("Show Additional Info", ref _showAdditionalInfoBuffer);
-            ImGui.Checkbox("Greet on Login", ref _greetOnLoginBuffer);
+            ImGui.Checkbox("Login Greeting", ref _greetOnLoginBuffer);
+            if (_greetOnLoginBuffer)
+            {
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(200);
+                ImGui.InputText("##logingreetingprompt", ref _loginGreetingPromptBuffer, 256);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("The prompt for the login greeting.");
+                }
+            }
             ImGui.SameLine();
-            ImGui.SetCursorPosX(300.0f);
+            ImGui.SetCursorPosX(380.0f);
             ImGui.Checkbox("Conversation History", ref _enableHistoryBuffer);
             if (ImGui.IsItemHovered())
             {
@@ -784,6 +802,11 @@ namespace XIVAICompanion
                 configuration.RemoveLineBreaks = _removeLineBreaksBuffer;
                 configuration.ShowAdditionalInfo = _showAdditionalInfoBuffer;
                 configuration.GreetOnLogin = _greetOnLoginBuffer;
+                if (string.IsNullOrWhiteSpace(_loginGreetingPromptBuffer))
+                {
+                    _loginGreetingPromptBuffer = "I'm back to Eorzea, please greet me.";
+                }
+                configuration.LoginGreetingPrompt = _loginGreetingPromptBuffer;
                 configuration.EnableConversationHistory = _enableHistoryBuffer;
                 configuration.EnableAutoFallback = _enableAutoFallbackBuffer;
                 configuration.Save();
