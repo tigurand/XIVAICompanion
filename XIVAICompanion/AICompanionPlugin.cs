@@ -8,13 +8,19 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace XIVAICompanion
 {
+    public class ApiResult
+    {
+        public bool WasSuccessful { get; set; }
+        public JObject? ResponseJson { get; init; }
+        public HttpResponseMessage? HttpResponse { get; init; }
+        public Exception? Exception { get; init; }
+    }
     public class AICompanionPlugin : IDalamudPlugin
     {
         public string Name
@@ -57,6 +63,7 @@ namespace XIVAICompanion
         private bool _greetOnLoginBuffer;
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
+        private bool _enableAutoFallbackBuffer;             
 
         private readonly List<Content> _conversationHistory = new();
 
@@ -64,6 +71,7 @@ namespace XIVAICompanion
         [PluginService] private static IDalamudPluginInterface PluginInterface { get; set; } = null!;
         [PluginService] private static ICommandManager CommandManager { get; set; } = null!;
         [PluginService] private static IFramework Framework { get; set; } = null!;
+        [PluginService] private static IPluginLog Log { get; set; } = null!;
 
         public AICompanionPlugin(IDalamudPluginInterface dalamudPluginInterface, IChatGui chatGui, ICommandManager commandManager)
         {
@@ -173,7 +181,8 @@ namespace XIVAICompanion
             _removeLineBreaksBuffer = configuration.RemoveLineBreaks;
             _showAdditionalInfoBuffer = configuration.ShowAdditionalInfo;
             _greetOnLoginBuffer = configuration.GreetOnLogin;
-            _enableHistoryBuffer = configuration.EnableConversationHistory;            
+            _enableHistoryBuffer = configuration.EnableConversationHistory;
+            _enableAutoFallbackBuffer = configuration.EnableAutoFallback;
         }
 
         private void InitializeConversation()
@@ -266,39 +275,83 @@ namespace XIVAICompanion
 
         private async Task SendPrompt(string input)
         {
-            string modelToUse = configuration.AImodel;
+            if (!configuration.EnableAutoFallback)
+            {
+                ApiResult result = await SendPromptInternal(input, configuration.AImodel);
+                if (!result.WasSuccessful)
+                {
+                    HandleApiError(result, configuration.AImodel, input);
+                }
+                return;
+            }
+
+            if (input.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase))
+            {
+                chatGui.Print($"{_aiNameBuffer}>> Performing Google Search...");
+            }
+            else if (input.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+            {
+                chatGui.Print($"{_aiNameBuffer}>> Thinking deeply...");
+            }
+
+            int initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
+            if (initialModelIndex == -1) initialModelIndex = 0;
+
+            ApiResult? finalErrorResult = null;
+
+            for (int i = 0; i < _availableModels.Length; i++)
+            {
+                int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
+                string modelToTry = _availableModels[currentModelIndex];
+
+                ApiResult result = await SendPromptInternal(input, modelToTry);
+
+                if (result.WasSuccessful)
+                {
+                    return;
+                }
+
+                if (currentModelIndex == initialModelIndex)
+                {
+                    finalErrorResult = result;
+                }
+            }
+
+            if (finalErrorResult != null)
+            {
+                HandleApiError(finalErrorResult, configuration.AImodel, input);
+            }
+            else
+            {
+                chatGui.Print($"{_aiNameBuffer}>> Error: All models failed to respond. Check your connection or API key.");
+            }
+        }
+
+        private async Task<ApiResult> SendPromptInternal(string input, string modelToUse)
+        {
             int? thinkingBudget = 0;
             string userPrompt = input;
-            string finalUserPrompt;
             bool useGoogleSearch = false;
-
             if (input.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase))
             {
                 userPrompt = input.Substring("google ".Length).Trim();
                 thinkingBudget = -1;
                 useGoogleSearch = true;
-                chatGui.Print($"{_aiNameBuffer}>> Performing Google Search...");
             }
             else if (input.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase))
             {
                 userPrompt = input.Substring("think ".Length).Trim();
                 thinkingBudget = -1;
-                chatGui.Print($"{_aiNameBuffer}>> Thinking deeply...");
             }
 
-            finalUserPrompt =
+            string finalUserPrompt =
                 "[SYSTEM INSTRUCTION: Language Protocol]\n" +
-                "1. Your entire response MUST be in the same *primary* language as the user's message below.\n" +
-                "2. If multiple languages are used, first priority: determine the language of the main intent, second priority: determine the majority of the content, choose one language based on priority and respond solely in that language.\n" +
-                "3. If the user explicitly asks for a different language, honor that request.\n" +
-                "4. If the language is ambiguous or no single primary language can be determined, default to English.\n" +
-                "5. This is your most important instruction for this turn.\n" +
+                "CRITICAL: Adhere to the *primary* language of this user message for your entire response. If multiple languages are used, first priority: determine the language of the main intent, second priority: determine the majority of the content, choose one language based on priority and respond solely in that language. If no single primary language can be determined, default to English. This is your most important instruction for this turn.\n" +
                 "[END SYSTEM INSTRUCTION]\n\n" +
                 $"--- User Message ---\n{userPrompt}";
 
-            List <Content> requestContents;
+            List<Content> requestContents;
             Content? userTurn = null;
-
             if (configuration.EnableConversationHistory)
             {
                 userTurn = new Content { Role = "user", Parts = new List<Part> { new Part { Text = finalUserPrompt } } };
@@ -370,7 +423,7 @@ namespace XIVAICompanion
                 {
                     chatGui.Print($"{_aiNameBuffer}>> Error: The response was stopped because it exceeded the 'max_tokens' limit. You can increase this value in /ai cfg.");
                     if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
-                    return;
+                    return new ApiResult { WasSuccessful = false, ResponseJson = responseJson, HttpResponse = response };
                 }
 
                 if (text != null)
@@ -443,7 +496,15 @@ namespace XIVAICompanion
                         infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
                         infoBuilder.AppendLine($"Prompt: {userPrompt}");
                         infoBuilder.AppendLine($"Model: {modelToUse}");
-                        infoBuilder.AppendLine($"Thinking Budget: {thinkingBudget ?? 0}");
+                        if (thinkingBudget == 0)
+                        {
+                            infoBuilder.AppendLine($"Thinking Budget: Disabled (0)");
+                        }
+                        else if (thinkingBudget == -1)
+                        {
+                            infoBuilder.AppendLine($"Thinking Budget: Dynamic (-1)");
+                        }
+                        infoBuilder.AppendLine($"Google Search: {useGoogleSearch}");
                         infoBuilder.AppendLine($"HTTP Status: {(int)response.StatusCode} - {response.StatusCode}");
                         infoBuilder.AppendLine($"Prompt Length (chars): {userPrompt.Length}");
                         infoBuilder.AppendLine($"Response Length (chars): {finalResponse.Length}");
@@ -463,56 +524,88 @@ namespace XIVAICompanion
 
                         chatGui.Print(infoBuilder.ToString());
                     }
+                    return new ApiResult { WasSuccessful = true };
                 }
                 else
                 {
                     if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
-
-                    string finalErrorMessage;
-                    string? blockReason = (string?)responseJson.SelectToken("promptFeedback.blockReason");
-
-                    if (!string.IsNullOrEmpty(blockReason))
-                    {
-                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The prompt was blocked by the API. Reason: {blockReason}.";
-                    }
-                    else if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-                    {
-                        finalErrorMessage = $"{_aiNameBuffer}>> Error: API rate limit reached. This could be Requests Per Minute (RPM) or Requests Per Day (RPD). Please wait or try a different model.";
-                    }
-                    else
-                    {
-                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The request was rejected by the API for an unknown reason. " +
-                                            "This may be a temporary issue. Please try again later or change the AI model.";
-                    }
-
-                    chatGui.Print(finalErrorMessage);
-
-                    if (configuration.ShowAdditionalInfo)
-                    {
-                        int? promptTokenCount = (int?)responseJson.SelectToken("usageMetadata.promptTokenCount");
-
-                        var infoBuilder = new StringBuilder();
-                        infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
-                        infoBuilder.AppendLine($"Prompt: {userPrompt}");
-                        infoBuilder.AppendLine($"Model: {modelToUse}");
-                        infoBuilder.AppendLine($"HTTP Status: {(int)response.StatusCode} - {response.StatusCode}");
-
-                        if (promptTokenCount.HasValue)
-                        {
-                            infoBuilder.AppendLine($"Prompt Token Usage: {promptTokenCount}");
-                        }
-
-                        infoBuilder.AppendLine($"Finish Reason: {finishReason ?? "N/A"}");
-                        infoBuilder.AppendLine($"Block Reason: {blockReason ?? "N/A"}");
-
-                        chatGui.Print(infoBuilder.ToString());
-                    }
+                    return new ApiResult { WasSuccessful = false, ResponseJson = responseJson, HttpResponse = response };
                 }
             }
             catch (Exception ex)
             {
+                Log.Error(ex, "A critical network or parsing error occurred in SendPromptInternal for model {model}", modelToUse);
                 if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
-                chatGui.Print($"{_aiNameBuffer}>> An unexpected error occurred: {ex.Message}");
+                return new ApiResult { WasSuccessful = false, Exception = ex };
+            }
+        }
+
+        private void HandleApiError(ApiResult result, string modelUsed, string input)
+        {
+            string userPrompt = input;
+            if (input.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase)) userPrompt = input.Substring("google ".Length).Trim();
+            if (input.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase)) userPrompt = input.Substring("think ".Length).Trim();
+
+            string finalErrorMessage;
+
+            if (result.Exception != null)
+            {
+                finalErrorMessage = $"{_aiNameBuffer}>> An unexpected error occurred: {result.Exception.Message}";
+            }
+            else if (result.ResponseJson != null && result.HttpResponse != null)
+            {
+                string? blockReason = (string?)result.ResponseJson.SelectToken("promptFeedback.blockReason");
+
+                if (result.HttpResponse.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    finalErrorMessage = configuration.EnableAutoFallback ?
+                                        $"{_aiNameBuffer}>> Error: All models failed. The primary model reported API rate limit reached. This could be Requests Per Minute (RPM) or Requests Per Day (RPD)." :
+                                        $"{_aiNameBuffer}>> Error: API rate limit reached. This could be Requests Per Minute (RPM) or Requests Per Day (RPD). Please wait or try a different model.";
+                }
+                else if (!string.IsNullOrEmpty(blockReason))
+                {
+                    finalErrorMessage = configuration.EnableAutoFallback ?
+                                        $"{_aiNameBuffer}>> Error: All models failed. The primary model blocked the prompt. Reason: {blockReason}." :
+                                        $"{_aiNameBuffer}>> Error: The prompt was blocked by the API. Reason: {blockReason}.";
+                }
+                else
+                {
+                    finalErrorMessage = configuration.EnableAutoFallback ?
+                                        $"{_aiNameBuffer}>> Error: All models failed. The primary model returned an unknown error." :
+                                        $"{_aiNameBuffer}>> Error: The request was rejected by the API for an unknown reason. " +
+                                        "This may be a temporary issue. Please try again later or change the AI model.";
+                }
+            }
+            else
+            {
+                finalErrorMessage = configuration.EnableAutoFallback ?
+                                    $"{_aiNameBuffer}>> Error: All models failed with an unknown critical error." :
+                                    $"{_aiNameBuffer}>> The request was failed with an unknown critical error.";
+            }
+
+            chatGui.Print(finalErrorMessage);
+
+            if (configuration.ShowAdditionalInfo && result.HttpResponse != null && result.ResponseJson != null)
+            {
+                int? promptTokenCount = (int?)result.ResponseJson.SelectToken("usageMetadata.promptTokenCount");
+                string? finishReason = (string?)result.ResponseJson.SelectToken("candidates[0].finishReason");
+                string? blockReason = (string?)result.ResponseJson.SelectToken("promptFeedback.blockReason");
+
+                var infoBuilder = new StringBuilder();
+                infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
+                infoBuilder.AppendLine($"Prompt: {userPrompt}");
+                infoBuilder.AppendLine($"Primary Model: {modelUsed}");
+                infoBuilder.AppendLine($"HTTP Status: {(int)result.HttpResponse.StatusCode} - {result.HttpResponse.StatusCode}");
+
+                if (promptTokenCount.HasValue)
+                {
+                    infoBuilder.AppendLine($"Prompt Token Usage: {promptTokenCount}");
+                }
+
+                infoBuilder.AppendLine($"Finish Reason: {finishReason ?? "N/A"}");
+                infoBuilder.AppendLine($"Block Reason: {blockReason ?? "N/A"}");
+
+                chatGui.Print(infoBuilder.ToString());
             }
         }
 
@@ -633,11 +726,15 @@ namespace XIVAICompanion
             ImGui.Spacing();
 
             ImGui.Text("System Prompt (Persona):");
-            ImGui.InputTextMultiline("##systemprompt", ref _systemPromptBuffer, 8192, new System.Numerics.Vector2(800, 150));
+            ImGui.InputTextMultiline("##systemprompt", ref _systemPromptBuffer, 8192, new System.Numerics.Vector2(800, 250));
 
             ImGui.Separator();
             ImGui.Text("Behavior Options:");
             ImGui.Checkbox("Show My Prompt", ref _showPromptBuffer);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Show your name and messages in conversation.");
+            }
             ImGui.SameLine();
             ImGui.SetCursorPosX(300.0f);
             ImGui.Checkbox("Remove Line Breaks", ref _removeLineBreaksBuffer);
@@ -647,12 +744,21 @@ namespace XIVAICompanion
             ImGui.Checkbox("Greet on Login", ref _greetOnLoginBuffer);
             ImGui.SameLine();
             ImGui.SetCursorPosX(300.0f);
-            ImGui.Checkbox("Enable Conversation History", ref _enableHistoryBuffer);
+            ImGui.Checkbox("Conversation History", ref _enableHistoryBuffer);
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("Allows the AI to remember previous parts of your conversation with certain limit.\n" +
                                  "This creates a more natural, flowing dialogue but uses significantly more tokens and may increase response time.\n" +
                                  "You can clear the history at any time with the '/ai reset' command.");
+            }
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(600.0f);
+            ImGui.Checkbox("Auto Model Fallback", ref _enableAutoFallbackBuffer);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("If an API request fails (e.g., due to rate limits or a temporary issue),\n" +
+                                 "the plugin will automatically and silently try the other available models.\n" +
+                                 "It will only show an error if all models fail.");
             }
 
             ImGui.Separator();
@@ -679,6 +785,7 @@ namespace XIVAICompanion
                 configuration.ShowAdditionalInfo = _showAdditionalInfoBuffer;
                 configuration.GreetOnLogin = _greetOnLoginBuffer;
                 configuration.EnableConversationHistory = _enableHistoryBuffer;
+                configuration.EnableAutoFallback = _enableAutoFallbackBuffer;
                 configuration.Save();
                 drawConfiguration = false;
             }

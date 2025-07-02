@@ -21,6 +21,7 @@ namespace XIVAICompanion
         public bool ShowPrompt { get; set; }
         public bool GreetOnLogin { get; set; } = true;
         public bool EnableConversationHistory { get; set; } = true;
+        public bool EnableAutoFallback { get; set; } = true;
 
         private IDalamudPluginInterface pluginInterface = null!;
 
