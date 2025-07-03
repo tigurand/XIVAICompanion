@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace XIVAICompanion
@@ -102,6 +103,11 @@ namespace XIVAICompanion
                 HelpMessage = "/ai think [whatever you want to ask]: use this when you want better answer with slower response time.",
                 ShowInHelp = true
             });
+            CommandManager.AddHandler("/ai fresh", new CommandInfo(AICommand)
+            {
+                HelpMessage = "/ai fresh [whatever you want to say]: Temporarily disable conversation history for this turn (1 time only).",
+                ShowInHelp = true
+            });
             CommandManager.AddHandler("/ai cfg", new CommandInfo(AICommand)
             {
                 HelpMessage = "Open configuration window.",
@@ -187,6 +193,29 @@ namespace XIVAICompanion
             _enableAutoFallbackBuffer = configuration.EnableAutoFallback;
         }
 
+        private string ProcessTextAliases(string rawInput)
+        {
+            string processedInput = rawInput;
+
+            var aliases = new Dictionary<string, string>
+            {
+                // Lodestone Aliases
+                { "nalodestone", "https://na.finalfantasyxiv.com/lodestone/" },
+                { "eulodestone", "https://eu.finalfantasyxiv.com/lodestone/" },
+                { "frlodestone", "https://fr.finalfantasyxiv.com/lodestone/" },
+                { "delodestone", "https://de.finalfantasyxiv.com/lodestone/" },
+                { "jplodestone", "https://jp.finalfantasyxiv.com/lodestone/" }
+            };
+
+            foreach (var alias in aliases)
+            {
+                string pattern = $@"\b{Regex.Escape(alias.Key)}\b";
+                processedInput = Regex.Replace(processedInput, pattern, alias.Value, RegexOptions.IgnoreCase);
+            }
+
+            return processedInput;
+        }
+
         private void InitializeConversation()
         {
             _conversationHistory.Clear();
@@ -208,13 +237,15 @@ namespace XIVAICompanion
                 return;
             }
 
-            if (args.Trim().Equals("cfg", StringComparison.OrdinalIgnoreCase))
+            string processedArgs = ProcessTextAliases(args);
+
+            if (processedArgs.Trim().Equals("cfg", StringComparison.OrdinalIgnoreCase))
             {
                 OpenConfig();
                 return;
             }            
 
-            if (args.Trim().Equals("history", StringComparison.OrdinalIgnoreCase))
+            if (processedArgs.Trim().Equals("history", StringComparison.OrdinalIgnoreCase))
             {
                 configuration.EnableConversationHistory = !configuration.EnableConversationHistory;
                 configuration.Save();
@@ -230,7 +261,7 @@ namespace XIVAICompanion
                 return;
             }
 
-            if (args.Trim().Equals("history on", StringComparison.OrdinalIgnoreCase))
+            if (processedArgs.Trim().Equals("history on", StringComparison.OrdinalIgnoreCase))
             {
                 configuration.EnableConversationHistory = true;
                 configuration.Save();
@@ -239,7 +270,7 @@ namespace XIVAICompanion
                 return;
             }
 
-            if (args.Trim().Equals("history off", StringComparison.OrdinalIgnoreCase))
+            if (processedArgs.Trim().Equals("history off", StringComparison.OrdinalIgnoreCase))
             {
                 configuration.EnableConversationHistory = false;
                 configuration.Save();
@@ -248,7 +279,7 @@ namespace XIVAICompanion
                 return;
             }
 
-            if (args.Trim().Equals("reset", StringComparison.OrdinalIgnoreCase))
+            if (processedArgs.Trim().Equals("reset", StringComparison.OrdinalIgnoreCase))
             {
                 InitializeConversation();
                 chatGui.Print($"{_aiNameBuffer}>> Conversation history has been cleared.");
@@ -258,28 +289,35 @@ namespace XIVAICompanion
             if (configuration.ShowPrompt)
             {
                 string characterName = GetPlayerDisplayName();
-                string promptToDisplay = args;
 
-                if (args.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase))
+                string promptToDisplay = processedArgs.Trim();
+                if (promptToDisplay.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
                 {
-                    promptToDisplay = args.Trim().Substring("google ".Length).Trim();
+                    promptToDisplay = promptToDisplay.Substring("fresh ".Length).Trim();
                 }
-                else if (args.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+
+                if (promptToDisplay.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
                 {
-                    promptToDisplay = args.Trim().Substring("think ".Length).Trim();
+                    promptToDisplay = promptToDisplay.Substring("google ".Length).Trim();
+                }
+                else if (promptToDisplay.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+                {
+                    promptToDisplay = promptToDisplay.Substring("think ".Length).Trim();
                 }
 
                 chatGui.Print($"{characterName}: {promptToDisplay}");
             }
 
-            Task.Run(() => SendPrompt(args));
+            Task.Run(() => SendPrompt(processedArgs));
         }
 
         private async Task SendPrompt(string input)
         {
+            bool isStateless = input.Trim().StartsWith("fresh ", StringComparison.OrdinalIgnoreCase);
+
             if (!configuration.EnableAutoFallback)
             {
-                ApiResult result = await SendPromptInternal(input, configuration.AImodel);
+                ApiResult result = await SendPromptInternal(input, configuration.AImodel, isStateless);
                 if (!result.WasSuccessful)
                 {
                     HandleApiError(result, configuration.AImodel, input);
@@ -287,11 +325,18 @@ namespace XIVAICompanion
                 return;
             }
 
-            if (input.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase))
+            string commandCheckString = input.Trim();
+
+            if (commandCheckString.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
+            {
+                commandCheckString = commandCheckString.Substring("fresh ".Length).Trim();
+            }
+
+            if (commandCheckString.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
             {
                 chatGui.Print($"{_aiNameBuffer}>> Performing Google Search...");
             }
-            else if (input.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+            else if (commandCheckString.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
             {
                 chatGui.Print($"{_aiNameBuffer}>> Thinking deeply...");
             }
@@ -306,7 +351,7 @@ namespace XIVAICompanion
                 int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
                 string modelToTry = _availableModels[currentModelIndex];
 
-                ApiResult result = await SendPromptInternal(input, modelToTry);
+                ApiResult result = await SendPromptInternal(input, modelToTry, isStateless);
 
                 if (result.WasSuccessful)
                 {
@@ -329,21 +374,35 @@ namespace XIVAICompanion
             }
         }
 
-        private async Task<ApiResult> SendPromptInternal(string input, string modelToUse)
+        private async Task<ApiResult> SendPromptInternal(string input, string modelToUse, bool isStateless)
         {
             int? thinkingBudget = 0;
-            string userPrompt = input;
+            string userPrompt;
             bool useGoogleSearch = false;
-            if (input.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase))
+            string currentPrompt = input.Trim();
+
+            if (isStateless)
             {
-                userPrompt = input.Substring("google ".Length).Trim();
+                if (currentPrompt.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
+                {
+                    currentPrompt = currentPrompt.Substring("fresh ".Length).Trim();
+                }
+            }
+
+            if (currentPrompt.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
+            {
+                userPrompt = currentPrompt.Substring("google ".Length).Trim();
                 thinkingBudget = -1;
                 useGoogleSearch = true;
             }
-            else if (input.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+            else if (currentPrompt.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
             {
-                userPrompt = input.Substring("think ".Length).Trim();
+                userPrompt = currentPrompt.Substring("think ".Length).Trim();
                 thinkingBudget = -1;
+            }
+            else
+            {
+                userPrompt = currentPrompt;
             }
 
             string finalUserPrompt =
@@ -354,7 +413,7 @@ namespace XIVAICompanion
 
             List<Content> requestContents;
             Content? userTurn = null;
-            if (configuration.EnableConversationHistory)
+            if (configuration.EnableConversationHistory && !isStateless)
             {
                 userTurn = new Content { Role = "user", Parts = new List<Part> { new Part { Text = finalUserPrompt } } };
                 _conversationHistory.Add(userTurn);
@@ -399,7 +458,17 @@ namespace XIVAICompanion
 
             if (useGoogleSearch)
             {
-                geminiRequest.Tools = new List<Tool> { new Tool { GoogleSearch = new GoogleSearch() } };
+                var toolsList = new List<Tool>
+                {
+                    new Tool { GoogleSearch = new GoogleSearch() }
+                };
+
+                // --- START OF EXPERIMENTAL URL CONTEXT FEATURE ---
+                // To disable this feature, simply comment out the next line.
+                toolsList.Add(new Tool { UrlContext = new UrlContext() });
+                // --- END OF EXPERIMENTAL URL CONTEXT FEATURE ---
+
+                geminiRequest.Tools = toolsList;
             }
 
             try
@@ -442,9 +511,9 @@ namespace XIVAICompanion
                     else
                     {
                         sanitizedText = text;
-                    }
+                    }   
 
-                    if (configuration.EnableConversationHistory)
+                    if (configuration.EnableConversationHistory && !isStateless)
                     {
                         var modelTurn = new Content { Role = "model", Parts = new List<Part> { new Part { Text = sanitizedText } } };
                         _conversationHistory.Add(modelTurn);
@@ -544,9 +613,19 @@ namespace XIVAICompanion
 
         private void HandleApiError(ApiResult result, string modelUsed, string input)
         {
-            string userPrompt = input;
-            if (input.Trim().StartsWith("google ", StringComparison.OrdinalIgnoreCase)) userPrompt = input.Substring("google ".Length).Trim();
-            if (input.Trim().StartsWith("think ", StringComparison.OrdinalIgnoreCase)) userPrompt = input.Substring("think ".Length).Trim();
+            string userPrompt = input.Trim();
+            if (userPrompt.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
+            {
+                userPrompt = userPrompt.Substring("fresh ".Length).Trim();
+            }
+            if (userPrompt.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
+            {
+                userPrompt = userPrompt.Substring("google ".Length).Trim();
+            }
+            else if (userPrompt.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+            {
+                userPrompt = userPrompt.Substring("think ".Length).Trim();
+            }
 
             string finalErrorMessage;
 
@@ -865,9 +944,14 @@ namespace XIVAICompanion
         }
         public class Tool
         {
-            [JsonProperty("googleSearch")] public GoogleSearch GoogleSearch { get; set; } = new();
+            [JsonProperty("googleSearch", NullValueHandling = NullValueHandling.Ignore)]
+            public GoogleSearch? GoogleSearch { get; set; }
+
+            [JsonProperty("urlContext", NullValueHandling = NullValueHandling.Ignore)]
+            public UrlContext? UrlContext { get; set; }
         }
         public class GoogleSearch { }
+        public class UrlContext { }
         #endregion
     }
 }
