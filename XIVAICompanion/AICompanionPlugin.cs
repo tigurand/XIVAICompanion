@@ -1,4 +1,5 @@
 ﻿using Dalamud.Game.Command;
+using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -9,6 +10,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -45,27 +47,30 @@ namespace XIVAICompanion
         private readonly IChatGui chatGui;
 
         private bool drawConfiguration;
-
-        private readonly string[] _availableModels = { "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17" };
-        private int _selectedModelIndex;
+                
         private string _apiKeyBuffer = string.Empty;
         private int _maxTokensBuffer;
+        private readonly string[] _availableModels = { "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17" };
+        private int _selectedModelIndex;
 
         private string _aiNameBuffer = string.Empty;
         private bool _letSystemPromptHandleAINameBuffer;
         private int _addressingModeBuffer;
+        private string _localPlayerName = string.Empty;
         private string _customUserNameBuffer = string.Empty;
         private string _systemPromptBuffer = string.Empty;
 
-        private bool _showPromptBuffer;
-        private string _localPlayerName = string.Empty;
-        private bool _removeLineBreaksBuffer;
-        private bool _showAdditionalInfoBuffer;
         private bool _greetOnLoginBuffer;
         private string _loginGreetingPromptBuffer = string.Empty;
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
-        private bool _enableAutoFallbackBuffer;             
+        private bool _enableAutoFallbackBuffer;
+
+        private bool _showPromptBuffer;        
+        private bool _removeLineBreaksBuffer;
+        private bool _showAdditionalInfoBuffer;        
+        private bool _useCustomColorsBuffer;
+        private Vector4 _foregroundColorBuffer;
 
         private readonly List<Content> _conversationHistory = new();
 
@@ -191,6 +196,8 @@ namespace XIVAICompanion
             _loginGreetingPromptBuffer = configuration.LoginGreetingPrompt;
             _enableHistoryBuffer = configuration.EnableConversationHistory;
             _enableAutoFallbackBuffer = configuration.EnableAutoFallback;
+            _useCustomColorsBuffer = configuration.UseCustomColors;
+            _foregroundColorBuffer = configuration.ForegroundColor;
         }
 
         private string ProcessTextAliases(string rawInput)
@@ -226,14 +233,14 @@ namespace XIVAICompanion
         {
             if (string.IsNullOrEmpty(configuration.ApiKey))
             {
-                chatGui.Print($"{_aiNameBuffer}>> Error: API key is not set. Please configure it in /ai cfg.");
+                PrintMessageToChat($"{_aiNameBuffer}>> Error: API key is not set. Please configure it in /ai cfg.");
                 OpenConfig();
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(args))
             {
-                chatGui.Print($"{_aiNameBuffer}>> Error: No prompt provided. Please enter a message after the /ai command.");
+                PrintMessageToChat($"{_aiNameBuffer}>> Error: No prompt provided. Please enter a message after the /ai command.");
                 return;
             }
 
@@ -252,11 +259,11 @@ namespace XIVAICompanion
                 _enableHistoryBuffer = configuration.EnableConversationHistory;
                 if (configuration.EnableConversationHistory)
                 {
-                    chatGui.Print($"{_aiNameBuffer}>> Conversation history is now enabled.");
+                    PrintMessageToChat($"{_aiNameBuffer}>> Conversation history is now enabled.");
                 }
                 else
                 {
-                    chatGui.Print($"{_aiNameBuffer}>> Conversation history is now disabled.");
+                    PrintMessageToChat($"{_aiNameBuffer}>> Conversation history is now disabled.");
                 }
                 return;
             }
@@ -266,7 +273,7 @@ namespace XIVAICompanion
                 configuration.EnableConversationHistory = true;
                 configuration.Save();
                 _enableHistoryBuffer = configuration.EnableConversationHistory;
-                chatGui.Print($"{_aiNameBuffer}>> Conversation history is now enabled.");
+                PrintMessageToChat($"{_aiNameBuffer}>> Conversation history is now enabled.");
                 return;
             }
 
@@ -275,14 +282,14 @@ namespace XIVAICompanion
                 configuration.EnableConversationHistory = false;
                 configuration.Save();
                 _enableHistoryBuffer = configuration.EnableConversationHistory;
-                chatGui.Print($"{_aiNameBuffer}>> Conversation history is now disabled.");
+                PrintMessageToChat($"{_aiNameBuffer}>> Conversation history is now disabled.");
                 return;
             }
 
             if (processedArgs.Trim().Equals("reset", StringComparison.OrdinalIgnoreCase))
             {
                 InitializeConversation();
-                chatGui.Print($"{_aiNameBuffer}>> Conversation history has been cleared.");
+                PrintMessageToChat($"{_aiNameBuffer}>> Conversation history has been cleared.");
                 return;
             }
 
@@ -305,10 +312,28 @@ namespace XIVAICompanion
                     promptToDisplay = promptToDisplay.Substring("think ".Length).Trim();
                 }
 
-                chatGui.Print($"{characterName}: {promptToDisplay}");
+                PrintMessageToChat($"{characterName}: {promptToDisplay}");
             }
 
             Task.Run(() => SendPrompt(processedArgs));
+        }
+
+        private void PrintMessageToChat(string message)
+        {
+            if (!configuration.UseCustomColors || configuration.ForegroundColor.W < 0.05f)
+            {
+                chatGui.Print(message);
+                return;
+            }
+
+            var seStringBuilder = new SeStringBuilder();
+            var foreground = configuration.ForegroundColor;
+
+            seStringBuilder.Add(new ColorPayload(new Vector3(foreground.X, foreground.Y, foreground.Z)));
+            seStringBuilder.AddText(message);
+            seStringBuilder.Add(new ColorEndPayload());
+
+            chatGui.Print(seStringBuilder.Build());
         }
 
         private async Task SendPrompt(string input)
@@ -334,11 +359,11 @@ namespace XIVAICompanion
 
             if (commandCheckString.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
             {
-                chatGui.Print($"{_aiNameBuffer}>> Performing Google Search...");
+                PrintMessageToChat($"{_aiNameBuffer}>> Performing Google Search...");
             }
             else if (commandCheckString.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
             {
-                chatGui.Print($"{_aiNameBuffer}>> Thinking deeply...");
+                PrintMessageToChat($"{_aiNameBuffer}>> Thinking deeply...");
             }
 
             int initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
@@ -370,7 +395,7 @@ namespace XIVAICompanion
             }
             else
             {
-                chatGui.Print($"{_aiNameBuffer}>> Error: All models failed to respond. Check your connection or API key.");
+                PrintMessageToChat($"{_aiNameBuffer}>> Error: All models failed to respond. Check your connection or API key.");
             }
         }
 
@@ -492,7 +517,7 @@ namespace XIVAICompanion
 
                 if (finishReason == "MAX_TOKENS")
                 {
-                    chatGui.Print($"{_aiNameBuffer}>> Error: The response was stopped because it exceeded the 'max_tokens' limit. You can increase this value in /ai cfg.");
+                    PrintMessageToChat($"{_aiNameBuffer}>> Error: The response was stopped because it exceeded the 'max_tokens' limit. You can increase this value in /ai cfg.");
                     if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
                     return new ApiResult { WasSuccessful = false, ResponseJson = responseJson, HttpResponse = response };
                 }
@@ -526,7 +551,7 @@ namespace XIVAICompanion
                     const int chunkSize = 1000;
                     if (finalResponse.Length <= chunkSize)
                     {
-                        chatGui.Print($"{_aiNameBuffer}: {finalResponse}");
+                        PrintMessageToChat($"{_aiNameBuffer}: {finalResponse}");
                     }
                     else
                     {
@@ -535,7 +560,7 @@ namespace XIVAICompanion
                         {
                             if (remainingText.Length <= chunkSize)
                             {
-                                chatGui.Print($"{_aiNameBuffer}: {remainingText}");
+                                PrintMessageToChat($"{_aiNameBuffer}: {remainingText}");
                                 break;
                             }
 
@@ -548,7 +573,7 @@ namespace XIVAICompanion
                             }
 
                             string chunkToPrint = remainingText.Substring(0, splitIndex);
-                            chatGui.Print($"{_aiNameBuffer}: {chunkToPrint}");
+                            PrintMessageToChat($"{_aiNameBuffer}: {chunkToPrint}");
 
                             remainingText = remainingText.Substring(splitIndex).TrimStart();
                         }
@@ -593,7 +618,7 @@ namespace XIVAICompanion
                             infoBuilder.Append($"Total Token Usage: {promptTokenCount.Value + responseTokenCount.Value}");
                         }
 
-                        chatGui.Print(infoBuilder.ToString());
+                        PrintMessageToChat(infoBuilder.ToString());
                     }
                     return new ApiResult { WasSuccessful = true };
                 }
@@ -664,7 +689,7 @@ namespace XIVAICompanion
                                     $"{_aiNameBuffer}>> The request was failed with an unknown critical error.";
             }
 
-            chatGui.Print(finalErrorMessage);
+            PrintMessageToChat(finalErrorMessage);
 
             if (configuration.ShowAdditionalInfo && result.HttpResponse != null && result.ResponseJson != null)
             {
@@ -686,7 +711,7 @@ namespace XIVAICompanion
                 infoBuilder.AppendLine($"Finish Reason: {finishReason ?? "N/A"}");
                 infoBuilder.Append($"Block Reason: {blockReason ?? "N/A"}");
 
-                chatGui.Print(infoBuilder.ToString());
+                PrintMessageToChat(infoBuilder.ToString());
             }
         }
 
@@ -828,6 +853,7 @@ namespace XIVAICompanion
             ImGui.SameLine();
             ImGui.SetCursorPosX(600.0f);
             ImGui.Checkbox("Show Additional Info", ref _showAdditionalInfoBuffer);
+
             ImGui.Checkbox("Login Greeting", ref _greetOnLoginBuffer);
             if (_greetOnLoginBuffer)
             {
@@ -856,6 +882,13 @@ namespace XIVAICompanion
                 ImGui.SetTooltip("If an API request fails (e.g., due to rate limits or a temporary issue),\n" +
                                  "the plugin will automatically and silently try the other available models.\n" +
                                  "It will only show an error if all models fail.");
+            }
+
+            ImGui.Checkbox("Custom Chat Colors", ref _useCustomColorsBuffer);
+            if (_useCustomColorsBuffer)
+            {
+                ImGui.SameLine();
+                ImGui.ColorEdit4("Text Color", ref _foregroundColorBuffer, ImGuiColorEditFlags.NoInputs);
             }
 
             ImGui.Separator();
@@ -888,6 +921,8 @@ namespace XIVAICompanion
                 configuration.LoginGreetingPrompt = _loginGreetingPromptBuffer;
                 configuration.EnableConversationHistory = _enableHistoryBuffer;
                 configuration.EnableAutoFallback = _enableAutoFallbackBuffer;
+                configuration.UseCustomColors = _useCustomColorsBuffer;
+                configuration.ForegroundColor = _foregroundColorBuffer;
                 configuration.Save();
                 drawConfiguration = false;
             }
