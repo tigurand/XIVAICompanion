@@ -21,3 +21,5 @@ Example:<br />
 
 ## Acknowledgements
 This project was originally forked from and inspired by Eisenhuth's [dalamud-chatgpt](https://github.com/Eisenhuth/dalamud-chatgpt). While the core has been significantly rewritten to use Google's Gemini API and a different feature set, this project would not have been possible without their foundational work.
+
+The advanced RGB color picker functionality was made possible by open-source code of the [Honorific](https://github.com/Caraxi/Honorific) plugin by Caraxi. Thank you for your foundational work.
