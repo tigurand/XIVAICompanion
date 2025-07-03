@@ -30,7 +30,7 @@ namespace XIVAICompanion
         public bool ShowPrompt { get; set; }
         public bool RemoveLineBreaks { get; set; }
         public bool ShowAdditionalInfo { get; set; }
-        public bool UseCustomColors { get; set; } = false;
+        public bool UseCustomColors { get; set; }
         public Vector4 ForegroundColor { get; set; } = new Vector4(0.9f, 0.9f, 0.9f, 1.0f);
 
         private IDalamudPluginInterface pluginInterface = null!;

@@ -9,6 +9,8 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Numerics;
 using System.Text;
@@ -51,7 +53,7 @@ namespace XIVAICompanion
         private string _apiKeyBuffer = string.Empty;
         private int _maxTokensBuffer;
         private readonly string[] _availableModels = { "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17" };
-        private int _selectedModelIndex;
+        private int _selectedModelIndex = -1;
 
         private string _aiNameBuffer = string.Empty;
         private bool _letSystemPromptHandleAINameBuffer;
@@ -59,6 +61,11 @@ namespace XIVAICompanion
         private string _localPlayerName = string.Empty;
         private string _customUserNameBuffer = string.Empty;
         private string _systemPromptBuffer = string.Empty;
+        private readonly DirectoryInfo _personaFolder;
+        private List<string> _personaFiles = new();
+        private int _selectedPersonaIndex = -1;
+        private string _saveAsNameBuffer = string.Empty;
+        private bool _showOverwriteConfirmation = false;
 
         private bool _greetOnLoginBuffer;
         private string _loginGreetingPromptBuffer = string.Empty;
@@ -88,6 +95,8 @@ namespace XIVAICompanion
 
             LoadConfigIntoBuffers();
             InitializeConversation();
+            _personaFolder = new DirectoryInfo(Path.Combine(PluginInterface.GetPluginConfigDirectory(), "Personas"));
+            LoadAvailablePersonas();
 
             dalamudPluginInterface.UiBuilder.Draw += DrawConfiguration;
             dalamudPluginInterface.UiBuilder.OpenMainUi += OpenConfig;
@@ -198,6 +207,95 @@ namespace XIVAICompanion
             _enableAutoFallbackBuffer = configuration.EnableAutoFallback;
             _useCustomColorsBuffer = configuration.UseCustomColors;
             _foregroundColorBuffer = configuration.ForegroundColor;
+        }
+
+        private void LoadAvailablePersonas()
+        {
+            if (!_personaFolder.Exists)
+            {
+                _personaFolder.Create();
+            }
+            var realFiles = _personaFolder.GetFiles("*.json")
+                .Select(f => Path.GetFileNameWithoutExtension(f.Name))
+                .ToList();
+
+            _personaFiles = new List<string> { "<New Profile>" };
+            _personaFiles.AddRange(realFiles);
+        }
+
+        private void LoadPersona(string profileName)
+        {
+            if (profileName == "<New Profile>")
+            {
+                var defaultPersona = new Persona();
+                _aiNameBuffer = defaultPersona.AIName;
+                _letSystemPromptHandleAINameBuffer = defaultPersona.LetSystemPromptHandleAIName;
+                _addressingModeBuffer = defaultPersona.AddressingMode;
+                _customUserNameBuffer = defaultPersona.CustomUserName;
+                _systemPromptBuffer = defaultPersona.SystemPrompt;
+
+                _saveAsNameBuffer = "AI";
+
+                chatGui.Print($"{_aiNameBuffer}>> New profile template loaded. Configure and save it.");
+                return;
+            }
+
+            var filePath = Path.Combine(_personaFolder.FullName, profileName + ".json");
+            if (!File.Exists(filePath)) return;
+
+            try
+            {
+                var json = File.ReadAllText(filePath);
+                var persona = JsonConvert.DeserializeObject<Persona>(json);
+
+                if (persona != null)
+                {
+                    _aiNameBuffer = persona.AIName;
+                    _letSystemPromptHandleAINameBuffer = persona.LetSystemPromptHandleAIName;
+                    _addressingModeBuffer = persona.AddressingMode;
+                    _customUserNameBuffer = persona.CustomUserName;
+                    _systemPromptBuffer = persona.SystemPrompt;
+
+                    chatGui.Print($"{_aiNameBuffer}>> Profile '{profileName}' loaded into config window. Press 'Save and Close' to apply.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, $"Failed to load persona file: {profileName}");
+            }
+        }
+
+        private void SavePersona(string fileName)
+        {
+            var persona = new Persona
+            {
+                AIName = string.IsNullOrWhiteSpace(_aiNameBuffer) ? "AI" : _aiNameBuffer,
+                LetSystemPromptHandleAIName = _letSystemPromptHandleAINameBuffer,
+                AddressingMode = _addressingModeBuffer,
+                CustomUserName = string.IsNullOrWhiteSpace(_customUserNameBuffer) ? "Adventurer" : _customUserNameBuffer,
+                SystemPrompt = _systemPromptBuffer
+            };
+
+            try
+            {
+                _personaFolder.Create();
+
+                string filePath = Path.Combine(_personaFolder.FullName, fileName + ".json");
+
+                var json = JsonConvert.SerializeObject(persona, Formatting.Indented);
+
+                File.WriteAllText(filePath, json);
+
+                LoadAvailablePersonas();
+                _selectedPersonaIndex = _personaFiles.FindIndex(f => f.Equals(fileName, StringComparison.OrdinalIgnoreCase));
+
+                chatGui.Print($"{_aiNameBuffer}>> Profile '{fileName}' saved successfully.");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, $"Failed to save persona file: {fileName}");
+                chatGui.Print($"{_aiNameBuffer}>> Error: Failed to save profile '{fileName}'. See /xllog for details.");
+            }
         }
 
         private string ProcessTextAliases(string rawInput)
@@ -732,11 +830,11 @@ namespace XIVAICompanion
             string userNameInstruction = string.Empty;
             switch (configuration.AddressingMode)
             {
-                case 0: // Player Name
+                case 0:
                     string characterName = string.IsNullOrEmpty(_localPlayerName) ? "Adventurer" : _localPlayerName;
                     userNameInstruction = $"You must address the user, your conversation partner, as {characterName}.\n";
                     break;
-                case 1: // Custom Name
+                case 1:
                     string customName = string.IsNullOrWhiteSpace(configuration.CustomUserName) ? "Adventurer" : configuration.CustomUserName;
                     userNameInstruction = $"You must address the user, your conversation partner, as {customName}.\n";
                     break;
@@ -750,6 +848,21 @@ namespace XIVAICompanion
         private void OpenConfig()
         {
             LoadConfigIntoBuffers();
+            LoadAvailablePersonas();
+
+            int matchingIndex = _personaFiles.FindIndex(f =>
+                f.Equals(configuration.AIName, StringComparison.OrdinalIgnoreCase));
+
+            if (matchingIndex != -1)
+            {
+                _selectedPersonaIndex = matchingIndex;
+                _saveAsNameBuffer = _personaFiles[matchingIndex];
+            }
+            else
+            {
+                _selectedPersonaIndex = 0;
+                _saveAsNameBuffer = configuration.AIName;
+            }
             drawConfiguration = true;
         }
 
@@ -795,8 +908,11 @@ namespace XIVAICompanion
             ImGui.SameLine();
             ImGui.SetCursorPosX(500.0f);
             ImGui.Text("How should the AI address you?");
-
             ImGui.InputText("##ainame", ref _aiNameBuffer, 32);
+            if (ImGui.IsItemDeactivatedAfterEdit())
+            {
+                _saveAsNameBuffer = _aiNameBuffer;
+            }
             ImGui.SameLine();
             ImGui.SetCursorPosX(500.0f);
             ImGui.RadioButton("Player Name", ref _addressingModeBuffer, 0);
@@ -839,6 +955,94 @@ namespace XIVAICompanion
 
             ImGui.Text("System Prompt (Persona):");
             ImGui.InputTextMultiline("##systemprompt", ref _systemPromptBuffer, 8192, new System.Numerics.Vector2(800, 250));
+
+            ImGui.Separator();
+            ImGui.Text("Persona Profiles:");
+            ImGui.SetNextItemWidth(230);
+            if (ImGui.Combo("##personaselect", ref _selectedPersonaIndex, _personaFiles.ToArray(), _personaFiles.Count))
+            {
+                if (_personaFiles[_selectedPersonaIndex] == "<New Profile>")
+                {
+                    _saveAsNameBuffer = _aiNameBuffer;
+                }
+                else
+                {
+                    _saveAsNameBuffer = _personaFiles[_selectedPersonaIndex];
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Load"))
+            {
+                if (_selectedPersonaIndex != -1)
+                {
+                    LoadPersona(_personaFiles[_selectedPersonaIndex]);
+                }
+            }
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(390.0f);
+            ImGui.Text("Save Current Persona As:");
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(180);
+            ImGui.InputText("##saveasname", ref _saveAsNameBuffer, 64);
+            ImGui.SameLine();
+            if (ImGui.Button("Save Profile"))
+            {
+                if (_saveAsNameBuffer == "<New Profile>")
+                {
+                    ImGui.OpenPopup("Invalid Name");
+                }
+                else if (!string.IsNullOrWhiteSpace(_saveAsNameBuffer))
+                {
+                    string filePath = Path.Combine(_personaFolder.FullName, _saveAsNameBuffer + ".json");
+                    if (File.Exists(filePath))
+                    {
+                        ImGui.OpenPopup("Overwrite Confirmation");
+                    }
+                    else
+                    {
+                        SavePersona(_saveAsNameBuffer);
+                    }
+                }
+            }
+            if (ImGui.BeginPopupModal("Invalid Name", ref drawConfiguration, ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                ImGui.Text("'<New Profile>' is a reserved name and cannot be used.");
+                ImGui.Separator();
+                ImGui.SetCursorPosX(110.0f);
+                if (ImGui.Button("OK", new Vector2(120, 0)))
+                {
+                    ImGui.CloseCurrentPopup();
+                }
+                ImGui.EndPopup();
+            }
+            if (_showOverwriteConfirmation)
+            {
+                ImGui.OpenPopup("Overwrite Confirmation");
+                if (ImGui.BeginPopupModal("Overwrite Confirmation", ref _showOverwriteConfirmation, ImGuiWindowFlags.AlwaysAutoResize))
+                {
+                    ImGui.Text($"The profile named '{_saveAsNameBuffer}' already exists.\nDo you want to overwrite it?");
+                    ImGui.Separator();
+
+                    ImGui.SetCursorPosX(15.0f);
+                    if (ImGui.Button("Yes, Overwrite", new Vector2(120, 0)))
+                    {
+                        SavePersona(_saveAsNameBuffer);
+                        _showOverwriteConfirmation = false;
+                        ImGui.CloseCurrentPopup();
+                    }
+
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosX(157.0f);
+                    if (ImGui.Button("No, Cancel", new Vector2(120, 0)))
+                    {
+                        _showOverwriteConfirmation = false;
+                        ImGui.CloseCurrentPopup();
+                    }
+
+                    ImGui.EndPopup();
+                }
+            }
 
             ImGui.Separator();
             ImGui.Text("Behavior Options:");
@@ -884,7 +1088,7 @@ namespace XIVAICompanion
                                  "It will only show an error if all models fail.");
             }
 
-            ImGui.Checkbox("Custom Chat Colors", ref _useCustomColorsBuffer);
+            ImGui.Checkbox("Custom Chat Color", ref _useCustomColorsBuffer);
             if (_useCustomColorsBuffer)
             {
                 ImGui.SameLine();
@@ -924,6 +1128,7 @@ namespace XIVAICompanion
                 configuration.UseCustomColors = _useCustomColorsBuffer;
                 configuration.ForegroundColor = _foregroundColorBuffer;
                 configuration.Save();
+                InitializeConversation();
                 drawConfiguration = false;
             }
 
