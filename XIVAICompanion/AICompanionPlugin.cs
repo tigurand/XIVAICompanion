@@ -65,6 +65,8 @@ namespace XIVAICompanion
         private List<string> _personaFiles = new();
         private int _selectedPersonaIndex = -1;
         private string _saveAsNameBuffer = string.Empty;
+        private bool _showOverwriteConfirmation = false;
+        private bool _showInvalidNameConfirmation = false;
 
         private bool _greetOnLoginBuffer;
         private string _loginGreetingPromptBuffer = string.Empty;
@@ -499,7 +501,7 @@ namespace XIVAICompanion
 
         private async Task<ApiResult> SendPromptInternal(string input, string modelToUse, bool isStateless)
         {
-            int? thinkingBudget = 0;
+            int? thinkingBudget = 512;
             string userPrompt;
             bool useGoogleSearch = false;
             string currentPrompt = input.Trim();
@@ -515,13 +517,13 @@ namespace XIVAICompanion
             if (currentPrompt.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
             {
                 userPrompt = currentPrompt.Substring("google ".Length).Trim();
-                thinkingBudget = -1;
+                thinkingBudget = configuration.MaxTokens;
                 useGoogleSearch = true;
             }
             else if (currentPrompt.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
             {
                 userPrompt = currentPrompt.Substring("think ".Length).Trim();
-                thinkingBudget = -1;
+                thinkingBudget = configuration.MaxTokens;
             }
             else
             {
@@ -530,14 +532,17 @@ namespace XIVAICompanion
 
             string finalUserPrompt =
                 "[SYSTEM INSTRUCTION: Language Protocol]\n" +
-                "CRITICAL: Adhere to the *primary* language of this user message for your entire response. If multiple languages are used, first priority: determine the language of the main intent, second priority: determine the majority of the content, choose one language based on priority and respond solely in that language. If no single primary language can be determined, default to English. This is your most important instruction for this turn.\n" +
+                "CRITICAL:\n" +
+                "* Respond entirely in the primary language of the user's message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +
+                "* Always re-evaluate the language based solely on the current message, ignoring previous conversation languages and any contextual bias from sensitive or prominent terms. This is the highest-priority instruction for this turn.\n" +
                 "[END SYSTEM INSTRUCTION]\n\n" +
-                $"--- User Message ---\n{userPrompt}";
+                $"--- User Message ---\n{userPrompt}\n\n[SYSTEM COMMAND: ";
 
             if (useGoogleSearch)
             {
-                finalUserPrompt += "\n\n[SYSTEM COMMAND: Do not ask for confirmation. Do not acknowledge the request. Your sole function is to execute the search tool based on the user's message and then immediately provide a comprehensive, synthesized answer using the search results.]";
+                finalUserPrompt += "Do not ask for confirmation. Do not acknowledge the request. Your sole function is to execute the search tool based on the user's message and then immediately provide a comprehensive, synthesized answer using the search results.";
             }
+            finalUserPrompt += " Answer in correct language based on Language Protocol.]";
 
             List<Content> requestContents;
             Content? userTurn = null;
@@ -639,7 +644,21 @@ namespace XIVAICompanion
                     else
                     {
                         sanitizedText = text;
-                    }   
+                    }
+
+                    const string userMessageMarker = "--- User Message ---";
+                    markerIndex = sanitizedText.IndexOf(userMessageMarker, StringComparison.Ordinal);
+
+                    if (markerIndex != -1)
+                    {
+                        int userPromptEndIndex = sanitizedText.IndexOf(userPrompt, markerIndex, StringComparison.Ordinal);
+
+                        if (userPromptEndIndex != -1)
+                        {
+                            sanitizedText = sanitizedText.Substring(userPromptEndIndex + userPrompt.Length);
+                            sanitizedText = sanitizedText.TrimStart();
+                        }
+                    }
 
                     if (configuration.EnableConversationHistory && !isStateless)
                     {
@@ -695,13 +714,17 @@ namespace XIVAICompanion
                         infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
                         infoBuilder.AppendLine($"Prompt: {userPrompt}");
                         infoBuilder.AppendLine($"Model: {modelToUse}");
-                        if (thinkingBudget == 0)
+                        if (thinkingBudget == configuration.MaxTokens)
                         {
-                            infoBuilder.AppendLine($"Thinking Budget: Disabled (0)");
+                            infoBuilder.AppendLine($"Thinking Budget: Maximum ({thinkingBudget})");
                         }
-                        else if (thinkingBudget == -1)
+                        else if (thinkingBudget > 0)
                         {
-                            infoBuilder.AppendLine($"Thinking Budget: Dynamic (-1)");
+                            infoBuilder.AppendLine($"Thinking Budget: Standard ({thinkingBudget})");
+                        }
+                        else
+                        {
+                            infoBuilder.AppendLine($"Thinking Budget: Disabled ({thinkingBudget ?? 0})");
                         }
                         infoBuilder.AppendLine($"Google Search: {useGoogleSearch}");
                         infoBuilder.AppendLine($"HTTP Status: {(int)response.StatusCode} - {response.StatusCode}");
@@ -997,10 +1020,10 @@ namespace XIVAICompanion
             ImGui.SameLine();
             if (ImGui.Button("Save Profile"))
             {
-                if (string.IsNullOrWhiteSpace(_saveAsNameBuffer))
-                {}
+                if (string.IsNullOrWhiteSpace(_saveAsNameBuffer)) { /* Do nothing */ }
                 else if (_saveAsNameBuffer.Equals("<New Profile>", StringComparison.OrdinalIgnoreCase))
                 {
+                    _showInvalidNameConfirmation = true;
                     ImGui.OpenPopup("Invalid Name");
                 }
                 else
@@ -1008,6 +1031,7 @@ namespace XIVAICompanion
                     string filePath = Path.Combine(_personaFolder.FullName, _saveAsNameBuffer + ".json");
                     if (File.Exists(filePath))
                     {
+                        _showOverwriteConfirmation = true;
                         ImGui.OpenPopup("Overwrite Confirmation");
                     }
                     else
@@ -1016,35 +1040,69 @@ namespace XIVAICompanion
                     }
                 }
             }
-            if (ImGui.BeginPopupModal("Invalid Name", ref drawConfiguration, ImGuiWindowFlags.AlwaysAutoResize))
+            if (_showInvalidNameConfirmation)
             {
-                ImGui.Text("'<New Profile>' is a reserved name and cannot be used.");
-                ImGui.Separator();
-                ImGui.SetCursorPosX(110.0f);
-                if (ImGui.Button("OK", new Vector2(120, 0)))
+                if (ImGui.BeginPopupModal("Invalid Name", ref _showInvalidNameConfirmation, ImGuiWindowFlags.AlwaysAutoResize))
                 {
-                    ImGui.CloseCurrentPopup();
-                }
-                ImGui.EndPopup();
-            }
-            if (ImGui.BeginPopupModal("Overwrite Confirmation", ref drawConfiguration, ImGuiWindowFlags.AlwaysAutoResize))
-            {
-                ImGui.Text($"A persona named '{_saveAsNameBuffer}' already exists.\nDo you want to overwrite it?");
-                ImGui.Separator();
+                    ImGui.Text("'<New Profile>' is a reserved name and cannot be used.");
+                    ImGui.Separator();
+                    ImGui.Spacing();
 
-                ImGui.SetCursorPosX(15.0f);
-                if (ImGui.Button("Yes, Overwrite", new Vector2(120, 0)))
-                {
-                    SavePersona(_saveAsNameBuffer);
-                    ImGui.CloseCurrentPopup();
+                    float buttonWidth = 120;
+                    float windowWidth = ImGui.GetWindowSize().X;
+                    float startX = (windowWidth - buttonWidth) * 0.5f;
+
+                    if (startX > 0)
+                    {
+                        ImGui.SetCursorPosX(startX);
+                    }
+                    if (ImGui.Button("OK", new Vector2(buttonWidth, 0)))
+                    {
+                        _showInvalidNameConfirmation = false;
+                        ImGui.CloseCurrentPopup();
+                    }
+
+                    ImGui.EndPopup();
                 }
-                ImGui.SameLine();
-                ImGui.SetCursorPosX(157.0f);
-                if (ImGui.Button("No, Cancel", new Vector2(120, 0)))
+            }
+            if (_showOverwriteConfirmation)
+            {
+                if (ImGui.BeginPopupModal("Overwrite Confirmation", ref _showOverwriteConfirmation, ImGuiWindowFlags.AlwaysAutoResize))
                 {
-                    ImGui.CloseCurrentPopup();
+                    ImGui.Text($"The profile named '{_saveAsNameBuffer}' already exists.");
+                    ImGui.Text("Do you want to overwrite it?");
+                    ImGui.Separator();
+                    ImGui.Spacing();
+
+                    float buttonWidth = 120;
+                    float spacing = 10;
+                    float totalWidth = (buttonWidth * 2) + spacing;
+
+                    float windowWidth = ImGui.GetWindowSize().X;
+                    float startX = (windowWidth - totalWidth) * 0.5f;
+
+                    if (startX > 0)
+                    {
+                        ImGui.SetCursorPosX(startX);
+                    }
+
+                    if (ImGui.Button("Yes, Overwrite", new Vector2(buttonWidth, 0)))
+                    {
+                        SavePersona(_saveAsNameBuffer);
+                        _showOverwriteConfirmation = false;
+                        ImGui.CloseCurrentPopup();
+                    }
+
+                    ImGui.SameLine(0, spacing);
+
+                    if (ImGui.Button("No, Cancel", new Vector2(buttonWidth, 0)))
+                    {
+                        _showOverwriteConfirmation = false;
+                        ImGui.CloseCurrentPopup();
+                    }
+
+                    ImGui.EndPopup();
                 }
-                ImGui.EndPopup();
             }
 
             ImGui.Separator();
