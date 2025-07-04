@@ -309,7 +309,8 @@ namespace XIVAICompanion
                 { "eulodestone", "https://eu.finalfantasyxiv.com/lodestone/" },
                 { "frlodestone", "https://fr.finalfantasyxiv.com/lodestone/" },
                 { "delodestone", "https://de.finalfantasyxiv.com/lodestone/" },
-                { "jplodestone", "https://jp.finalfantasyxiv.com/lodestone/" }
+                { "jplodestone", "https://jp.finalfantasyxiv.com/lodestone/" },
+                { "ffmaint", "https://na.finalfantasyxiv.com/lodestone/news/category/2" }
             };
 
             foreach (var alias in aliases)
@@ -533,6 +534,11 @@ namespace XIVAICompanion
                 "CRITICAL: Adhere to the *primary* language of this user message for your entire response. If multiple languages are used, first priority: determine the language of the main intent, second priority: determine the majority of the content, choose one language based on priority and respond solely in that language. If no single primary language can be determined, default to English. This is your most important instruction for this turn.\n" +
                 "[END SYSTEM INSTRUCTION]\n\n" +
                 $"--- User Message ---\n{userPrompt}";
+
+            if (useGoogleSearch)
+            {
+                finalUserPrompt += "\n\n[SYSTEM COMMAND: Do not ask for confirmation. Do not acknowledge the request. Your sole function is to execute the search tool based on the user's message and then immediately provide a comprehensive, synthesized answer using the search results.]";
+            }
 
             List<Content> requestContents;
             Content? userTurn = null;
@@ -988,11 +994,13 @@ namespace XIVAICompanion
             ImGui.SameLine();
             if (ImGui.Button("Save Profile"))
             {
-                if (_saveAsNameBuffer == "<New Profile>")
+                if (string.IsNullOrWhiteSpace(_saveAsNameBuffer))
+                {}
+                else if (_saveAsNameBuffer.Equals("<New Profile>", StringComparison.OrdinalIgnoreCase))
                 {
                     ImGui.OpenPopup("Invalid Name");
                 }
-                else if (!string.IsNullOrWhiteSpace(_saveAsNameBuffer))
+                else
                 {
                     string filePath = Path.Combine(_personaFolder.FullName, _saveAsNameBuffer + ".json");
                     if (File.Exists(filePath))
@@ -1016,32 +1024,24 @@ namespace XIVAICompanion
                 }
                 ImGui.EndPopup();
             }
-            if (_showOverwriteConfirmation)
+            if (ImGui.BeginPopupModal("Overwrite Confirmation", ref drawConfiguration, ImGuiWindowFlags.AlwaysAutoResize))
             {
-                ImGui.OpenPopup("Overwrite Confirmation");
-                if (ImGui.BeginPopupModal("Overwrite Confirmation", ref _showOverwriteConfirmation, ImGuiWindowFlags.AlwaysAutoResize))
+                ImGui.Text($"A persona named '{_saveAsNameBuffer}' already exists.\nDo you want to overwrite it?");
+                ImGui.Separator();
+
+                ImGui.SetCursorPosX(15.0f);
+                if (ImGui.Button("Yes, Overwrite", new Vector2(120, 0)))
                 {
-                    ImGui.Text($"The profile named '{_saveAsNameBuffer}' already exists.\nDo you want to overwrite it?");
-                    ImGui.Separator();
-
-                    ImGui.SetCursorPosX(15.0f);
-                    if (ImGui.Button("Yes, Overwrite", new Vector2(120, 0)))
-                    {
-                        SavePersona(_saveAsNameBuffer);
-                        _showOverwriteConfirmation = false;
-                        ImGui.CloseCurrentPopup();
-                    }
-
-                    ImGui.SameLine();
-                    ImGui.SetCursorPosX(157.0f);
-                    if (ImGui.Button("No, Cancel", new Vector2(120, 0)))
-                    {
-                        _showOverwriteConfirmation = false;
-                        ImGui.CloseCurrentPopup();
-                    }
-
-                    ImGui.EndPopup();
+                    SavePersona(_saveAsNameBuffer);
+                    ImGui.CloseCurrentPopup();
                 }
+                ImGui.SameLine();
+                ImGui.SetCursorPosX(157.0f);
+                if (ImGui.Button("No, Cancel", new Vector2(120, 0)))
+                {
+                    ImGui.CloseCurrentPopup();
+                }
+                ImGui.EndPopup();
             }
 
             ImGui.Separator();
