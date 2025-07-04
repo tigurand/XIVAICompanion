@@ -65,7 +65,6 @@ namespace XIVAICompanion
         private List<string> _personaFiles = new();
         private int _selectedPersonaIndex = -1;
         private string _saveAsNameBuffer = string.Empty;
-        private bool _showOverwriteConfirmation = false;
 
         private bool _greetOnLoginBuffer;
         private string _loginGreetingPromptBuffer = string.Empty;
@@ -976,6 +975,10 @@ namespace XIVAICompanion
                     _saveAsNameBuffer = _personaFiles[_selectedPersonaIndex];
                 }
             }
+            if (ImGui.IsItemClicked())
+            {
+                LoadAvailablePersonas();
+            }
 
             ImGui.SameLine();
             if (ImGui.Button("Load"))
@@ -1130,6 +1133,11 @@ namespace XIVAICompanion
                 configuration.Save();
                 InitializeConversation();
                 drawConfiguration = false;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Open Persona Folder"))
+            {
+                Util.OpenLink(_personaFolder.FullName);
             }
 
             ImGui.End();
