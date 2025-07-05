@@ -42,6 +42,7 @@ namespace XIVAICompanion
         }
 
         private const string commandName = "/ai";
+        private const int minimumThinkingBudget = 512;
 
         private static readonly HttpClient httpClient = new HttpClient();
 
@@ -161,6 +162,7 @@ namespace XIVAICompanion
             {
                 _hasGreetedThisSession = true;
                 string greetingPrompt = configuration.LoginGreetingPrompt;
+                Log.Info("Sending login greeting. Prompt: {Prompt}", greetingPrompt);
                 Task.Run(() => SendPrompt(greetingPrompt, true));
             }
         }
@@ -335,6 +337,7 @@ namespace XIVAICompanion
             if (string.IsNullOrEmpty(configuration.ApiKey))
             {
                 PrintMessageToChat($"{_aiNameBuffer}>> Error: API key is not set. Please configure it in /ai cfg.");
+                Log.Warning("Plugin configuration issue: API key is not set. User was prompted to open config.");
                 OpenConfig();
                 return;
             }
@@ -351,7 +354,7 @@ namespace XIVAICompanion
             {
                 OpenConfig();
                 return;
-            }            
+            }
 
             if (processedArgs.Trim().Equals("history", StringComparison.OrdinalIgnoreCase))
             {
@@ -441,12 +444,16 @@ namespace XIVAICompanion
         {
             bool isStateless = input.Trim().StartsWith("fresh ", StringComparison.OrdinalIgnoreCase);
 
+            var failedAttempts = new List<(string Model, ApiResult Result)>();
+
             if (!configuration.EnableAutoFallback && !isGreeting)
             {
-                ApiResult result = await SendPromptInternal(input, configuration.AImodel, isStateless);
+                string modelToUse = configuration.AImodel;
+                ApiResult result = await SendPromptInternal(input, modelToUse, isStateless);
                 if (!result.WasSuccessful)
                 {
-                    HandleApiError(result, configuration.AImodel, input);
+                    failedAttempts.Add((modelToUse, result));
+                    HandleApiError(failedAttempts, input);
                 }
                 return;
             }
@@ -476,9 +483,8 @@ namespace XIVAICompanion
             {
                 initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
             }
-            if (initialModelIndex == -1) initialModelIndex = 0;
 
-            ApiResult? finalErrorResult = null;
+            if (initialModelIndex == -1) initialModelIndex = 0;
 
             for (int i = 0; i < _availableModels.Length; i++)
             {
@@ -492,15 +498,12 @@ namespace XIVAICompanion
                     return;
                 }
 
-                if (currentModelIndex == initialModelIndex)
-                {
-                    finalErrorResult = result;
-                }
+                failedAttempts.Add((modelToTry, result));
             }
 
-            if (finalErrorResult != null)
+            if (failedAttempts.Count > 0)
             {
-                HandleApiError(finalErrorResult, configuration.AImodel, input);
+                HandleApiError(failedAttempts, input);
             }
             else
             {
@@ -510,7 +513,7 @@ namespace XIVAICompanion
 
         private async Task<ApiResult> SendPromptInternal(string input, string modelToUse, bool isStateless)
         {
-            int? thinkingBudget = 512;
+            int? thinkingBudget = minimumThinkingBudget;
             string userPrompt;
             bool useGoogleSearch = false;
             string currentPrompt = input.Trim();
@@ -633,8 +636,7 @@ namespace XIVAICompanion
                 string? finishReason = (string?)responseJson.SelectToken("candidates[0].finishReason");
 
                 if (finishReason == "MAX_TOKENS")
-                {
-                    PrintMessageToChat($"{_aiNameBuffer}>> Error: The response was stopped because it exceeded the 'max_tokens' limit. You can increase this value in /ai cfg.");
+                {                    
                     if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
                     return new ApiResult { WasSuccessful = false, ResponseJson = responseJson, HttpResponse = response };
                 }
@@ -771,8 +773,16 @@ namespace XIVAICompanion
             }
         }
 
-        private void HandleApiError(ApiResult result, string modelUsed, string input)
+        private void HandleApiError(List<(string Model, ApiResult Result)> failedAttempts, string input)
         {
+            if (failedAttempts.Count == 0) return;
+
+            var primaryFailure = failedAttempts[0];
+            string primaryModelUsed = primaryFailure.Model;
+            var primaryResult = primaryFailure.Result;
+
+            string finalErrorMessage;
+
             string userPrompt = input.Trim();
             if (userPrompt.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
             {
@@ -787,66 +797,98 @@ namespace XIVAICompanion
                 userPrompt = userPrompt.Substring("think ".Length).Trim();
             }
 
-            string finalErrorMessage;
-
-            if (result.Exception != null)
+            if (configuration.EnableAutoFallback && failedAttempts.Count > 1)
             {
-                finalErrorMessage = $"{_aiNameBuffer}>> An unexpected error occurred: {result.Exception.Message}";
-            }
-            else if (result.ResponseJson != null && result.HttpResponse != null)
-            {
-                string? blockReason = (string?)result.ResponseJson.SelectToken("promptFeedback.blockReason");
+                string primaryReason = "an unknown error";
 
-                if (result.HttpResponse.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                if (primaryResult.HttpResponse?.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
-                    finalErrorMessage = configuration.EnableAutoFallback ?
-                                        $"{_aiNameBuffer}>> Error: All models failed. The primary model reported API rate limit reached. This could be Requests Per Minute (RPM) or Requests Per Day (RPD)." :
-                                        $"{_aiNameBuffer}>> Error: API rate limit reached. This could be Requests Per Minute (RPM) or Requests Per Day (RPD). Please wait or try a different model.";
+                    primaryReason = "API rate limit reached (RPM or RPD)";
+                    Log.Warning("API Failure (Fallback Path): Primary model hit rate limit. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
                 }
-                else if (!string.IsNullOrEmpty(blockReason))
+                else if (primaryResult.ResponseJson?.SelectToken("promptFeedback.blockReason") is JToken blockReasonToken)
                 {
-                    finalErrorMessage = configuration.EnableAutoFallback ?
-                                        $"{_aiNameBuffer}>> Error: All models failed. The primary model blocked the prompt. Reason: {blockReason}." :
-                                        $"{_aiNameBuffer}>> Error: The prompt was blocked by the API. Reason: {blockReason}.";
+                    primaryReason = $"the prompt was blocked (Reason: {blockReasonToken})";
+                    Log.Warning("API Failure (Fallback Path): Primary model blocked prompt. Reason: {Reason}. Model: {Model}, Prompt: {Prompt}", blockReasonToken, primaryModelUsed, userPrompt);
+                }
+                else if ((string?)primaryResult.ResponseJson?.SelectToken("candidates[0].finishReason") == "MAX_TOKENS")
+                {
+                    primaryReason = "the response exceeded the 'max_tokens' limit";
+                    Log.Warning("API Failure (Fallback Path): {Reason}. This is a configuration issue. Model: {Model}, Prompt: {Prompt}", primaryReason, primaryModelUsed, userPrompt);
                 }
                 else
                 {
-                    finalErrorMessage = configuration.EnableAutoFallback ?
-                                        $"{_aiNameBuffer}>> Error: All models failed. The primary model returned an unknown error." :
-                                        $"{_aiNameBuffer}>> Error: The request was rejected by the API for an unknown reason. " +
-                                        "This may be a temporary issue. Please try again later or change the AI model.";
+                    Log.Warning("API Failure (Fallback Path): Primary model failed with an unknown error. See full log dump in 'Additional Info'. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
                 }
+
+                finalErrorMessage = $"{_aiNameBuffer}>> Error: The request to your primary model failed because {primaryReason}. Automatic fallback to other models was also unsuccessful.";
             }
             else
             {
-                finalErrorMessage = configuration.EnableAutoFallback ?
-                                    $"{_aiNameBuffer}>> Error: All models failed with an unknown critical error." :
-                                    $"{_aiNameBuffer}>> The request was failed with an unknown critical error.";
+                if (primaryResult.Exception != null)
+                {
+                    finalErrorMessage = $"{_aiNameBuffer}>> An unexpected error occurred: {primaryResult.Exception.Message}";
+                    Log.Error(primaryResult.Exception, "A critical network or parsing error occurred. Prompt: {Prompt}", userPrompt);
+                }
+                else if (primaryResult.ResponseJson != null && primaryResult.HttpResponse != null)
+                {
+                    string? blockReason = (string?)primaryResult.ResponseJson.SelectToken("promptFeedback.blockReason");
+                    string? finishReason = (string?)primaryResult.ResponseJson.SelectToken("candidates[0].finishReason");
+
+                    if (primaryResult.HttpResponse.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        finalErrorMessage = $"{_aiNameBuffer}>> Error: API rate limit reached. This could be Requests Per Minute (RPM) or Requests Per Day (RPD).";
+                        Log.Warning("API Failure: Rate Limit Exceeded. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
+                    }
+                    else if (finishReason == "MAX_TOKENS")
+                    {
+                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The response was stopped because it exceeded the 'max_tokens' limit. You can increase this value in /ai cfg.";
+                        Log.Warning("API Failure: Max Tokens Exceeded. This is a configuration issue. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
+                    }
+                    else if (!string.IsNullOrEmpty(blockReason))
+                    {
+                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The prompt was blocked by the API. Reason: {blockReason}.";
+                        Log.Warning("API Failure: Prompt Blocked. Reason: {Reason}. Model: {Model}, Prompt: {Prompt}", blockReason, primaryModelUsed, userPrompt);
+                    }
+                    else
+                    {
+                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The request was rejected by the API for an unknown reason.";
+                        Log.Warning("API Failure: Request rejected for an unknown reason. See full log dump in 'Additional Info'. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
+                    }
+                }
+                else
+                {
+                    finalErrorMessage = $"{_aiNameBuffer}>> The request failed with an unknown critical error.";
+                    Log.Error("A critical unknown error occurred. The API response was likely null or malformed. Prompt: {Prompt}", userPrompt);
+                }
             }
 
             PrintMessageToChat(finalErrorMessage);
 
-            if (configuration.ShowAdditionalInfo && result.HttpResponse != null && result.ResponseJson != null)
+            if (configuration.ShowAdditionalInfo)
             {
-                int? promptTokenCount = (int?)result.ResponseJson.SelectToken("usageMetadata.promptTokenCount");
-                string? finishReason = (string?)result.ResponseJson.SelectToken("candidates[0].finishReason");
-                string? blockReason = (string?)result.ResponseJson.SelectToken("promptFeedback.blockReason");
-
                 var infoBuilder = new StringBuilder();
                 infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
                 infoBuilder.AppendLine($"Prompt: {userPrompt}");
-                infoBuilder.AppendLine($"Primary Model: {modelUsed}");
-                infoBuilder.AppendLine($"HTTP Status: {(int)result.HttpResponse.StatusCode} - {result.HttpResponse.StatusCode}");
-
+                infoBuilder.AppendLine($"Primary Model Setting: {primaryModelUsed}");
+                int? promptTokenCount = (int?)primaryResult.ResponseJson?.SelectToken("usageMetadata.promptTokenCount");
                 if (promptTokenCount.HasValue)
                 {
                     infoBuilder.AppendLine($"Prompt Token Usage: {promptTokenCount}");
                 }
-
-                infoBuilder.AppendLine($"Finish Reason: {finishReason ?? "N/A"}");
-                infoBuilder.Append($"Block Reason: {blockReason ?? "N/A"}");
-
-                PrintMessageToChat(infoBuilder.ToString());
+                infoBuilder.AppendLine("--- Attempt Breakdown ---");
+                for (int i = 0; i < failedAttempts.Count; i++)
+                {
+                    var attempt = failedAttempts[i];
+                    string? finishReason = (string?)attempt.Result.ResponseJson?.SelectToken("candidates[0].finishReason");
+                    string? blockReason = (string?)attempt.Result.ResponseJson?.SelectToken("promptFeedback.blockReason");
+                    string status = attempt.Result.HttpResponse != null ? $"{(int)attempt.Result.HttpResponse.StatusCode} - {attempt.Result.HttpResponse.StatusCode}" : "N/A";
+                    infoBuilder.AppendLine($"Attempt {i + 1} ({attempt.Model}): FAILED");
+                    infoBuilder.AppendLine($"  Status: {status}");
+                    infoBuilder.AppendLine($"  Finish Reason: {finishReason ?? "N/A"}");
+                    infoBuilder.AppendLine($"  Block Reason: {blockReason ?? "N/A"}");
+                }
+                PrintMessageToChat(infoBuilder.ToString().TrimEnd());
             }
         }
 
@@ -917,7 +959,7 @@ namespace XIVAICompanion
                 Util.OpenLink("https://aistudio.google.com/app/apikey");
             }
             ImGui.Spacing();
-            ImGui.SliderInt("Max Tokens", ref _maxTokensBuffer, 64, 8192);
+            ImGui.SliderInt("Max Tokens", ref _maxTokensBuffer, minimumThinkingBudget, 8192);
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("Controls the maximum length of the response from the AI.");
