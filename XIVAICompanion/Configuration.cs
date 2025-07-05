@@ -10,13 +10,13 @@ namespace XIVAICompanion
 
         // General Settings
         public string ApiKey { get; set; } = "";
-        public int MaxTokens { get; set; }
+        public int MaxTokens { get; set; } = 1024;
         public string AImodel { get; set; } = "gemini-2.5-flash";
 
         // Persona Settings
         public string AIName { get; set; } = "AI";
         public bool LetSystemPromptHandleAIName { get; set; } = true;
-        public int AddressingMode { get; set; }
+        public int AddressingMode { get; set; } = 0;
         public string CustomUserName { get; set; } = "Adventurer";
         public string SystemPrompt { get; set; } = "";
 
@@ -27,10 +27,10 @@ namespace XIVAICompanion
         public bool EnableAutoFallback { get; set; } = true;
 
         // Log Display Settings
-        public bool ShowPrompt { get; set; }
-        public bool RemoveLineBreaks { get; set; }
-        public bool ShowAdditionalInfo { get; set; }
-        public bool UseCustomColors { get; set; }
+        public bool ShowPrompt { get; set; } = true;
+        public bool RemoveLineBreaks { get; set; } = true;
+        public bool ShowAdditionalInfo { get; set; } = false;
+        public bool UseCustomColors { get; set; } = false;
         public Vector4 ForegroundColor { get; set; } = new Vector4(0.9f, 0.9f, 0.9f, 1.0f);
 
         private IDalamudPluginInterface pluginInterface = null!;

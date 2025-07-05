@@ -54,6 +54,7 @@ namespace XIVAICompanion
         private int _maxTokensBuffer;
         private readonly string[] _availableModels = { "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17" };
         private int _selectedModelIndex = -1;
+        private const int greetingModelIndex = 1; // 1 = gemini-2.5-flash-lite-preview-06-17
 
         private string _aiNameBuffer = string.Empty;
         private bool _letSystemPromptHandleAINameBuffer;
@@ -160,7 +161,7 @@ namespace XIVAICompanion
             {
                 _hasGreetedThisSession = true;
                 string greetingPrompt = configuration.LoginGreetingPrompt;
-                Task.Run(() => SendPrompt(greetingPrompt));
+                Task.Run(() => SendPrompt(greetingPrompt, true));
             }
         }
 
@@ -436,11 +437,11 @@ namespace XIVAICompanion
             chatGui.Print(seStringBuilder.Build());
         }
 
-        private async Task SendPrompt(string input)
+        private async Task SendPrompt(string input, bool isGreeting = false)
         {
             bool isStateless = input.Trim().StartsWith("fresh ", StringComparison.OrdinalIgnoreCase);
 
-            if (!configuration.EnableAutoFallback)
+            if (!configuration.EnableAutoFallback && !isGreeting)
             {
                 ApiResult result = await SendPromptInternal(input, configuration.AImodel, isStateless);
                 if (!result.WasSuccessful)
@@ -466,7 +467,15 @@ namespace XIVAICompanion
                 PrintMessageToChat($"{_aiNameBuffer}>> Thinking deeply...");
             }
 
-            int initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
+            int initialModelIndex;
+            if (isGreeting)
+            {
+                initialModelIndex = greetingModelIndex;
+            }
+            else
+            {
+                initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
+            }
             if (initialModelIndex == -1) initialModelIndex = 0;
 
             ApiResult? finalErrorResult = null;
@@ -1203,6 +1212,7 @@ namespace XIVAICompanion
 
         public void Dispose()
         {
+            drawConfiguration = false;
             CommandManager.RemoveHandler(commandName);
             PluginInterface.UiBuilder.Draw -= DrawConfiguration;
             PluginInterface.UiBuilder.OpenMainUi -= OpenConfig;
