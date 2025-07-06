@@ -1,5 +1,7 @@
 ﻿using Dalamud.Game.Command;
 using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Interface;
+using Dalamud.Interface.Utility;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -13,12 +15,19 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace XIVAICompanion
 {
+    public class ChatMessage
+    {
+        public DateTime Timestamp { get; set; }
+        public string Author { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+    }
     public class ApiResult
     {
         public bool WasSuccessful { get; set; }
@@ -74,6 +83,7 @@ namespace XIVAICompanion
         private string _loginGreetingPromptBuffer = string.Empty;
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
+        private readonly List<Content> _conversationHistory = new();
         private bool _enableAutoFallbackBuffer;
 
         private bool _showPromptBuffer;        
@@ -82,7 +92,21 @@ namespace XIVAICompanion
         private bool _useCustomColorsBuffer;
         private Vector4 _foregroundColorBuffer;
 
-        private readonly List<Content> _conversationHistory = new();
+        private bool _drawChatWindow;
+        private string _chatInputBuffer = string.Empty;
+        private readonly List<ChatMessage> _historicalChatLog = new();
+        private readonly List<ChatMessage> _currentSessionChatLog = new();
+        private readonly DirectoryInfo _chatLogsFolder;
+
+        private bool _saveChatToFileBuffer;
+        private int _sessionsToLoadBuffer;
+        private int _daysToKeepLogsBuffer;
+        private string _chatFilterText = string.Empty;
+
+        private bool _shouldScrollToBottom;
+        private readonly List<string> _chatInputHistory = new();
+        private int _chatHistoryIndex = -1;
+        private bool _refocusChatInput;
 
         [PluginService] private static IClientState ClientState { get; set; } = null!;
         [PluginService] private static IDalamudPluginInterface PluginInterface { get; set; } = null!;
@@ -98,11 +122,16 @@ namespace XIVAICompanion
 
             LoadConfigIntoBuffers();
             InitializeConversation();
+
             _personaFolder = new DirectoryInfo(Path.Combine(PluginInterface.GetPluginConfigDirectory(), "Personas"));
+            _chatLogsFolder = new DirectoryInfo(Path.Combine(PluginInterface.GetPluginConfigDirectory(), "ChatLogs"));
             LoadAvailablePersonas();
+            LoadHistoricalLogs(configuration.AIName);
+            DeleteOldLogs();
 
             dalamudPluginInterface.UiBuilder.Draw += DrawConfiguration;
-            dalamudPluginInterface.UiBuilder.OpenMainUi += OpenConfig;
+            dalamudPluginInterface.UiBuilder.Draw += DrawChatWindow;
+            dalamudPluginInterface.UiBuilder.OpenMainUi += OpenChatWindow;
             dalamudPluginInterface.UiBuilder.OpenConfigUi += OpenConfig;            
 
             CommandManager.AddHandler(commandName, new CommandInfo(AICommand)
@@ -139,6 +168,11 @@ namespace XIVAICompanion
                 HelpMessage = "Clear conversation history.",
                 ShowInHelp = true
             });
+            CommandManager.AddHandler("/ai chat", new CommandInfo(AICommand)
+            {
+                HelpMessage = "Open the dedicated AI chat window.",
+                ShowInHelp = true
+            });
 
             ClientState.Login += OnLogin;
             ClientState.Logout += OnLogout;            
@@ -150,6 +184,19 @@ namespace XIVAICompanion
                     OnLogin();
                 }
             });
+        }
+
+        private string GetSanitizedAiName(string aiName)
+        {
+            string baseName = string.IsNullOrWhiteSpace(aiName) ? "AI" : aiName;
+
+            string sanitizedName = baseName.Replace(' ', '_');
+
+            foreach (char c in Path.GetInvalidFileNameChars())
+            {
+                sanitizedName = sanitizedName.Replace(c.ToString(), string.Empty);
+            }
+            return sanitizedName;
         }
 
         private void OnLogin()
@@ -211,6 +258,10 @@ namespace XIVAICompanion
             _enableAutoFallbackBuffer = configuration.EnableAutoFallback;
             _useCustomColorsBuffer = configuration.UseCustomColors;
             _foregroundColorBuffer = configuration.ForegroundColor;
+
+            _saveChatToFileBuffer = configuration.SaveChatHistoryToFile;
+            _sessionsToLoadBuffer = configuration.SessionsToLoad;
+            _daysToKeepLogsBuffer = configuration.DaysToKeepLogs;
         }
 
         private void LoadAvailablePersonas()
@@ -356,6 +407,12 @@ namespace XIVAICompanion
                 return;
             }
 
+            if (processedArgs.Trim().Equals("chat", StringComparison.OrdinalIgnoreCase))
+            {
+                _drawChatWindow = true;
+                return;
+            }
+
             if (processedArgs.Trim().Equals("history", StringComparison.OrdinalIgnoreCase))
             {
                 configuration.EnableConversationHistory = !configuration.EnableConversationHistory;
@@ -397,29 +454,370 @@ namespace XIVAICompanion
                 return;
             }
 
+            ProcessAndSendPrompt(processedArgs);
+        }
+
+        private void ProcessAndSendPrompt(string rawPrompt)
+        {
+            string cleanPrompt = GetCleanPromptText(rawPrompt);
+
+            _currentSessionChatLog.Add(new ChatMessage
+            {
+                Timestamp = DateTime.Now,
+                Author = GetPlayerDisplayName(),
+                Message = cleanPrompt
+            });
+
+            _chatInputHistory.Add(rawPrompt);
+            if (_chatInputHistory.Count > 20)
+            {
+                _chatInputHistory.RemoveAt(0);
+            }
+            _chatHistoryIndex = -1;
+
+            _shouldScrollToBottom = true;
+
+            string processedArgs = ProcessTextAliases(rawPrompt);
+
             if (configuration.ShowPrompt)
             {
                 string characterName = GetPlayerDisplayName();
 
-                string promptToDisplay = processedArgs.Trim();
-                if (promptToDisplay.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
-                {
-                    promptToDisplay = promptToDisplay.Substring("fresh ".Length).Trim();
-                }
-
-                if (promptToDisplay.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
-                {
-                    promptToDisplay = promptToDisplay.Substring("google ".Length).Trim();
-                }
-                else if (promptToDisplay.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
-                {
-                    promptToDisplay = promptToDisplay.Substring("think ".Length).Trim();
-                }
+                string promptToDisplay = GetCleanPromptText(processedArgs);
 
                 PrintMessageToChat($"{characterName}: {promptToDisplay}");
             }
 
             Task.Run(() => SendPrompt(processedArgs));
+        }
+
+        private unsafe void DrawChatWindow()
+        {
+            if (!_drawChatWindow) return;
+
+            ImGui.SetNextWindowSizeConstraints(new Vector2(350, 250), new Vector2(9999, 9999));
+            ImGui.SetNextWindowSize(new Vector2(800, 600), ImGuiCond.FirstUseEver);
+            if (ImGui.Begin($"{Name} Chat", ref _drawChatWindow))
+            {
+                if (UIHelper.AddHeaderIcon(PluginInterface, "config_button", FontAwesomeIcon.Cog, out var openConfigPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Configuration" }) && openConfigPressed)
+                {
+                    OpenConfig();
+                }
+
+                if (ImGui.CollapsingHeader("Settings", ImGuiTreeNodeFlags.None))
+                {
+                    if (ImGui.IsItemToggledOpen())
+                    {
+                        _saveChatToFileBuffer = configuration.SaveChatHistoryToFile;
+                        _sessionsToLoadBuffer = configuration.SessionsToLoad;
+                        _daysToKeepLogsBuffer = configuration.DaysToKeepLogs;
+                    }
+
+                    if (ImGui.Checkbox("Save Chat to File", ref _saveChatToFileBuffer))
+                    {
+                        configuration.SaveChatHistoryToFile = _saveChatToFileBuffer;
+                        configuration.Save();
+                    }
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip(
+                            "Saves the chat log to a text file for viewing later.\n" +
+                            "This is separate from the AI's short-term memory (in the main config)\n" +
+                            "and does not affect the conversation context.");
+                    }
+
+                    if (!_saveChatToFileBuffer)
+                    {
+                        ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * 0.5f);
+                        ImGui.BeginDisabled();
+                    }
+
+                    ImGui.SetNextItemWidth(100);
+                    if (ImGui.InputInt("Load Previous Sessions", ref _sessionsToLoadBuffer, 1, 5))
+                    {
+                        if (_sessionsToLoadBuffer < 0) _sessionsToLoadBuffer = 0;
+                        configuration.SessionsToLoad = _sessionsToLoadBuffer;
+                        configuration.Save();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("Reload"))
+                    {
+                        LoadHistoricalLogs(configuration.AIName);
+                    }
+
+                    ImGui.Text("Auto-delete logs older than (days):");
+                    ImGui.SameLine();
+                    ImGui.SetNextItemWidth(100);
+                    if (ImGui.InputInt("##DaysToKeep", ref _daysToKeepLogsBuffer))
+                    {
+                        if (_daysToKeepLogsBuffer < 0) _daysToKeepLogsBuffer = 0;
+                        configuration.DaysToKeepLogs = _daysToKeepLogsBuffer;
+                        configuration.Save();
+                    }
+                    
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Set to 0 to disable auto-deletion.");
+                    }
+
+                    ImGui.SameLine();
+                    if (ImGui.Button("Open History Folder"))
+                    {
+                        _chatLogsFolder.Create();
+                        Util.OpenLink(_chatLogsFolder.FullName);
+                    }
+
+                    if (!_saveChatToFileBuffer)
+                    {
+                        ImGui.EndDisabled();
+                        ImGui.PopStyleVar();
+                    }
+
+                    ImGui.SetNextItemWidth(-1);
+                    ImGui.InputTextWithHint("##chat_filter", "Filter chat log...", ref _chatFilterText, 256);
+                    ImGui.Spacing();
+                }
+
+                var chatRegionHeight = ImGui.GetContentRegionAvail().Y - (ImGui.GetTextLineHeightWithSpacing() * 2.5f);
+                ImGui.BeginChild("ChatLog", new Vector2(0, chatRegionHeight), true, ImGuiWindowFlags.HorizontalScrollbar);
+
+                var fullLog = _historicalChatLog.Concat(_currentSessionChatLog).ToList();
+
+                var displayedLog = fullLog;
+                if (!string.IsNullOrWhiteSpace(_chatFilterText))
+                {
+                    displayedLog = fullLog.Where(msg =>
+                        msg.Author.Contains(_chatFilterText, StringComparison.OrdinalIgnoreCase) ||
+                        msg.Message.Contains(_chatFilterText, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                }
+
+                DateTime? lastMessageDate = null;
+
+                for (int i = 0; i < displayedLog.Count; i++)
+                {
+                    var chatMessage = displayedLog[i];
+
+                    if (lastMessageDate == null || chatMessage.Timestamp.Date > lastMessageDate.Value.Date)
+                    {
+                        if (lastMessageDate != null) ImGui.Separator();
+                        ImGui.TextDisabled($"--- {chatMessage.Timestamp:dddd, MMMM d, yyyy} ---");
+                        ImGui.Separator();
+                    }
+                    lastMessageDate = chatMessage.Timestamp;
+
+                    ImGui.Spacing();
+
+                    var startPos = ImGui.GetCursorPos();
+
+                    var playerNameColor = new Vector4(0.8f, 0.8f, 1.0f, 1.0f); // Light Blue
+                    var aiNameColor = new Vector4(0.7f, 1.0f, 0.7f, 1.0f);     // Light Green
+
+                    bool isAI = chatMessage.Author == configuration.AIName;
+                    var authorColor = isAI ? aiNameColor : playerNameColor;
+
+                    ImGui.TextColored(authorColor, $"{chatMessage.Author}:");
+
+                    ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X);
+                    foreach (var chunk in SplitIntoChunks(chatMessage.Message, 2000))
+                    {
+                        string[] paragraphs = chunk.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+                        foreach (string paragraph in paragraphs)
+                        {
+                            ImGui.TextWrapped(paragraph);
+                        }
+                    }
+                    ImGui.PopTextWrapPos();
+
+                    var endPos = ImGui.GetCursorPos();
+                    var itemRectSize = new Vector2(ImGui.GetContentRegionAvail().X, endPos.Y - startPos.Y);
+
+                    ImGui.SetCursorPos(startPos);
+                    ImGui.InvisibleButton($"##message_button_{i}", itemRectSize);
+
+                    string popupId = $"popup_{i}";
+                    if (ImGui.BeginPopupContextItem(popupId))
+                    {
+                        string fullLine = $"{chatMessage.Author}: {chatMessage.Message}";
+                        if (ImGui.Selectable("Copy Message Text"))
+                        {
+                            ImGui.SetClipboardText(chatMessage.Message);
+                        }
+                        if (ImGui.Selectable("Copy Full Line"))
+                        {
+                            ImGui.SetClipboardText(fullLine);
+                        }
+                        ImGui.EndPopup();
+                    }
+                }
+
+                if (_shouldScrollToBottom)
+                {
+                    ImGui.SetScrollHereY(1.0f);
+                    _shouldScrollToBottom = false;
+                }
+
+                ImGui.EndChild();
+                ImGui.Separator();
+
+                bool messageSent = false;
+
+                if (_refocusChatInput || ImGui.IsWindowAppearing())
+                {
+                    ImGui.SetKeyboardFocusHere();
+                    _refocusChatInput = false;
+                }
+
+                float sendButtonWidth = ImGui.CalcTextSize("Send").X + ImGui.GetStyle().FramePadding.X * 2.0f;
+                float inputWidth = ImGui.GetContentRegionAvail().X - sendButtonWidth - ImGui.GetStyle().ItemSpacing.X;
+
+                ImGui.SetNextItemWidth(inputWidth);
+
+                var inputTextFlags = ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.CallbackHistory;
+
+                if (ImGui.InputTextWithHint("##ChatInput", "Type a message, or 'google ...', 'think ...', 'fresh ...'", ref _chatInputBuffer, 2048, inputTextFlags, (data) =>
+                {
+                    var callbackData = new ImGuiInputTextCallbackDataPtr(data);
+
+                    if (callbackData.EventFlag == ImGuiInputTextFlags.CallbackHistory)
+                    {
+                        int prevHistoryIndex = _chatHistoryIndex;
+                        if (callbackData.EventKey == ImGuiKey.UpArrow)
+                        {
+                            if (_chatHistoryIndex == -1)
+                                _chatHistoryIndex = _chatInputHistory.Count - 1;
+                            else if (_chatHistoryIndex > 0)
+                                _chatHistoryIndex--;
+                        }
+                        else if (callbackData.EventKey == ImGuiKey.DownArrow)
+                        {
+                            if (_chatHistoryIndex != -1)
+                            {
+                                if (_chatHistoryIndex < _chatInputHistory.Count - 1)
+                                    _chatHistoryIndex++;
+                                else
+                                    _chatHistoryIndex = -1;
+                            }
+                        }
+
+                        if (prevHistoryIndex != _chatHistoryIndex)
+                        {
+                            callbackData.DeleteChars(0, callbackData.BufTextLen);
+                            if (_chatHistoryIndex >= 0)
+                            {
+                                callbackData.InsertChars(0, _chatInputHistory[_chatHistoryIndex]);
+                            }
+                        }
+                    }
+                    return 0;
+                }))
+                {
+                    messageSent = true;
+                }
+
+                ImGui.SameLine();
+                if (ImGui.Button("Send"))
+                {
+                    messageSent = true;
+                }
+
+                if (messageSent && !string.IsNullOrWhiteSpace(_chatInputBuffer))
+                {
+                    ProcessAndSendPrompt(_chatInputBuffer);
+                    _chatInputBuffer = string.Empty;
+                    _refocusChatInput = true;
+                }
+            }
+            ImGui.End();
+        }
+
+        private void LoadHistoricalLogs(string aiName)
+        {
+            _historicalChatLog.Clear();
+
+            if (!configuration.SaveChatHistoryToFile || configuration.SessionsToLoad <= 0)
+            {
+                return;
+            }
+
+            if (!_chatLogsFolder.Exists)
+            {
+                return;
+            }
+
+            try
+            {
+                string sanitizedName = GetSanitizedAiName(aiName);
+                string searchPattern = $"{sanitizedName}_*.txt";
+
+                var logFiles = _chatLogsFolder.GetFiles(searchPattern)
+                                              .OrderByDescending(f => f.Name)
+                                              .Take(configuration.SessionsToLoad)
+                                              .Reverse()
+                                              .ToList();
+
+                Log.Info($"Found {logFiles.Count} historical chat logs for '{aiName}' to load.");
+
+                foreach (var file in logFiles)
+                {
+                    var lines = File.ReadAllLines(file.FullName);
+                    foreach (var line in lines)
+                    {
+                        var match = Regex.Match(line, @"\[(.*?)\] (.*?): (.*)");
+                        if (match.Success)
+                        {
+                            if (DateTime.TryParse(match.Groups[1].Value, out var timestamp))
+                            {
+                                _historicalChatLog.Add(new ChatMessage
+                                {
+                                    Timestamp = timestamp,
+                                    Author = match.Groups[2].Value,
+                                    Message = match.Groups[3].Value
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to load historical chat logs.");
+            }
+        }
+
+        private void DeleteOldLogs()
+        {
+            if (!configuration.SaveChatHistoryToFile || configuration.DaysToKeepLogs <= 0)
+            {
+                return;
+            }
+
+            if (!_chatLogsFolder.Exists)
+            {
+                return;
+            }
+
+            try
+            {
+                var filesToDelete = _chatLogsFolder.GetFiles("*.txt")
+                                                   .Where(f => f.CreationTimeUtc < DateTime.UtcNow.AddDays(-configuration.DaysToKeepLogs));
+
+                int deleteCount = 0;
+                foreach (var file in filesToDelete)
+                {
+                    file.Delete();
+                    deleteCount++;
+                }
+
+                if (deleteCount > 0)
+                {
+                    Log.Info($"Automatically deleted {deleteCount} chat log(s) older than {configuration.DaysToKeepLogs} days.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed during automatic deletion of old chat logs.");
+            }
         }
 
         private void PrintMessageToChat(string message)
@@ -508,6 +906,67 @@ namespace XIVAICompanion
             else
             {
                 PrintMessageToChat($"{_aiNameBuffer}>> Error: All models failed to respond. Check your connection or API key.");
+            }
+        }
+
+        private void SaveCurrentSessionLog(string? overrideAiName = null)
+        {
+            if (!configuration.SaveChatHistoryToFile || _currentSessionChatLog.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                _chatLogsFolder.Create();
+
+                string aiNameToUse = overrideAiName ?? configuration.AIName;
+                string sanitizedName = GetSanitizedAiName(aiNameToUse);
+
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                string fileName = $"{sanitizedName}_{timestamp}.txt";
+                string filePath = Path.Combine(_chatLogsFolder.FullName, fileName);
+
+                var logContent = new StringBuilder();
+                foreach (var message in _currentSessionChatLog)
+                {
+                    logContent.AppendLine($"[{message.Timestamp:yyyy-MM-dd HH:mm:ss}] {message.Author}: {message.Message}");
+                }
+
+                File.WriteAllText(filePath, logContent.ToString());
+                Log.Info($"Chat session with '{aiNameToUse}' saved to {fileName}");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to save chat session log.");
+            }
+        }
+
+        private IEnumerable<string> SplitIntoChunks(string text, int chunkSize)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= chunkSize)
+            {
+                yield return text;
+                yield break;
+            }
+
+            int offset = 0;
+            while (offset < text.Length)
+            {
+                int remaining = text.Length - offset;
+                int size = Math.Min(chunkSize, remaining);
+
+                if (offset + size < text.Length)
+                {
+                    int lastSpace = text.LastIndexOf(' ', offset + size, size);
+                    if (lastSpace != -1 && lastSpace > offset)
+                    {
+                        size = lastSpace - offset;
+                    }
+                }
+
+                yield return text.Substring(offset, size).TrimStart();
+                offset += size;
             }
         }
 
@@ -681,35 +1140,18 @@ namespace XIVAICompanion
                         ? sanitizedText.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ")
                         : sanitizedText;
 
-                    const int chunkSize = 1000;
-                    if (finalResponse.Length <= chunkSize)
+                    _currentSessionChatLog.Add(new ChatMessage
                     {
-                        PrintMessageToChat($"{_aiNameBuffer}: {finalResponse}");
-                    }
-                    else
+                        Timestamp = DateTime.Now,
+                        Author = configuration.AIName,
+                        Message = finalResponse
+                    });
+
+                    _shouldScrollToBottom = true;
+
+                    foreach (var chunk in SplitIntoChunks(finalResponse, 1000))
                     {
-                        string remainingText = finalResponse;
-                        while (remainingText.Length > 0)
-                        {
-                            if (remainingText.Length <= chunkSize)
-                            {
-                                PrintMessageToChat($"{_aiNameBuffer}: {remainingText}");
-                                break;
-                            }
-
-                            int splitIndex = chunkSize;
-                            int lastSpace = remainingText.LastIndexOf(' ', splitIndex, splitIndex);
-
-                            if (lastSpace != -1 && lastSpace > 0)
-                            {
-                                splitIndex = lastSpace;
-                            }
-
-                            string chunkToPrint = remainingText.Substring(0, splitIndex);
-                            PrintMessageToChat($"{_aiNameBuffer}: {chunkToPrint}");
-
-                            remainingText = remainingText.Substring(splitIndex).TrimStart();
-                        }
+                        PrintMessageToChat($"{_aiNameBuffer}: {chunk}");
                     }
 
                     if (configuration.ShowAdditionalInfo)
@@ -773,6 +1215,27 @@ namespace XIVAICompanion
             }
         }
 
+        private string GetCleanPromptText(string rawText)
+        {
+            string cleanText = rawText.Trim();
+
+            if (cleanText.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanText = cleanText.Substring("fresh ".Length).Trim();
+            }
+
+            if (cleanText.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanText = cleanText.Substring("google ".Length).Trim();
+            }
+            else if (cleanText.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanText = cleanText.Substring("think ".Length).Trim();
+            }
+
+            return cleanText;
+        }
+
         private void HandleApiError(List<(string Model, ApiResult Result)> failedAttempts, string input)
         {
             if (failedAttempts.Count == 0) return;
@@ -783,19 +1246,7 @@ namespace XIVAICompanion
 
             string finalErrorMessage;
 
-            string userPrompt = input.Trim();
-            if (userPrompt.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
-            {
-                userPrompt = userPrompt.Substring("fresh ".Length).Trim();
-            }
-            if (userPrompt.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
-            {
-                userPrompt = userPrompt.Substring("google ".Length).Trim();
-            }
-            else if (userPrompt.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
-            {
-                userPrompt = userPrompt.Substring("think ".Length).Trim();
-            }
+            string userPrompt = GetCleanPromptText(input);
 
             if (configuration.EnableAutoFallback && failedAttempts.Count > 1)
             {
@@ -924,6 +1375,11 @@ namespace XIVAICompanion
 
         #region Configuration and Plugin Lifecycle
 
+        private void OpenChatWindow()
+        {
+            _drawChatWindow = true;
+        }
+
         private void OpenConfig()
         {
             LoadConfigIntoBuffers();
@@ -951,6 +1407,11 @@ namespace XIVAICompanion
 
             ImGui.Begin($"{Name} Configuration", ref drawConfiguration, ImGuiWindowFlags.AlwaysAutoResize);
 
+            if (UIHelper.AddHeaderIcon(PluginInterface, "chat_button", FontAwesomeIcon.Comment, out var openChatPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Chat Window" }) && openChatPressed)
+            {
+                OpenChatWindow();
+            }
+
             ImGui.Text("API Key for Google AI:");
             ImGui.InputText("##apikey", ref _apiKeyBuffer, 60, ImGuiInputTextFlags.Password);
             ImGui.SameLine();
@@ -959,7 +1420,13 @@ namespace XIVAICompanion
                 Util.OpenLink("https://aistudio.google.com/app/apikey");
             }
             ImGui.Spacing();
-            ImGui.SliderInt("Max Tokens", ref _maxTokensBuffer, minimumThinkingBudget, 8192);
+            int minTokens = minimumThinkingBudget;
+            int maxTokens = 8192;
+
+            if (ImGui.SliderInt("Max Tokens", ref _maxTokensBuffer, minTokens, maxTokens))
+            {
+                _maxTokensBuffer = Math.Clamp(_maxTokensBuffer, minTokens, maxTokens);
+            }
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("Controls the maximum length of the response from the AI.");
@@ -994,7 +1461,7 @@ namespace XIVAICompanion
             }
             ImGui.SameLine();
             ImGui.SetCursorPosX(500.0f);
-            ImGui.RadioButton("Player Name", ref _addressingModeBuffer, 0);
+            ImGui.RadioButton("Character Name", ref _addressingModeBuffer, 0);
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("You can also additionally use System Prompt to override this.\n" +
@@ -1005,8 +1472,10 @@ namespace XIVAICompanion
             ImGui.Checkbox("Prioritize System Prompt to define AI's name", ref _letSystemPromptHandleAINameBuffer);
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip("CHECKED: The System Prompt below will be prioritized for how the AI identifies itself. Still have small chance to behave abnormally if you set different name above.\n" +
-                                 "UNCHECKED: The AI's name will use the setting above. May behave abnormally if you have additional prompt for name.");
+                ImGui.SetTooltip("CHECKED: The System Prompt below will be prioritized for how the AI identifies itself.\n" +
+                                 "Have small chance to behave abnormally if you set different name above.\n" +
+                                 "UNCHECKED: The AI's name will use the setting above.\n" +
+                                 "May behave abnormally if you have additional prompt for name.");
             }
             ImGui.SameLine();
             ImGui.SetCursorPosX(500.0f);
@@ -1186,9 +1655,11 @@ namespace XIVAICompanion
             ImGui.Checkbox("Conversation History", ref _enableHistoryBuffer);
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip("Allows the AI to remember previous parts of your conversation with certain limit.\n" +
-                                 "This creates a more natural, flowing dialogue but uses significantly more tokens and may increase response time.\n" +
-                                 "You can clear the history at any time with the '/ai reset' command.");
+                ImGui.SetTooltip("Allows the AI to remember the recent context of your conversation.\n" +
+                                "This creates a more natural, flowing dialogue but uses more tokens.\n" +
+                                "The AI may forget specific details from earlier in long conversations.\n" +
+                                "This short-term memory is cleared when the plugin starts, the persona changes,\n" +
+                                "or by using the /ai reset command.");
             }
             ImGui.SameLine();
             ImGui.SetCursorPosX(600.0f);
@@ -1210,6 +1681,22 @@ namespace XIVAICompanion
             ImGui.Separator();
             if (ImGui.Button("Save and Close"))
             {
+                var oldPersonaState = new
+                {
+                    Name = configuration.AIName,
+                    LetSystemPromptHandleName = configuration.LetSystemPromptHandleAIName,
+                    Mode = configuration.AddressingMode,
+                    CustomUser = configuration.CustomUserName,
+                    Prompt = configuration.SystemPrompt
+                };
+
+                if (oldPersonaState.Name != _aiNameBuffer)
+                {
+                    SaveCurrentSessionLog(oldPersonaState.Name);
+                    _currentSessionChatLog.Clear();
+                    _historicalChatLog.Clear();
+                }
+
                 configuration.AImodel = _availableModels[_selectedModelIndex];
                 configuration.ApiKey = _apiKeyBuffer;
                 configuration.MaxTokens = _maxTokensBuffer;
@@ -1239,8 +1726,26 @@ namespace XIVAICompanion
                 configuration.EnableAutoFallback = _enableAutoFallbackBuffer;
                 configuration.UseCustomColors = _useCustomColorsBuffer;
                 configuration.ForegroundColor = _foregroundColorBuffer;
+
                 configuration.Save();
-                InitializeConversation();
+
+                bool personaChanged = oldPersonaState.Name != configuration.AIName ||
+                                      oldPersonaState.LetSystemPromptHandleName != configuration.LetSystemPromptHandleAIName ||
+                                      oldPersonaState.Mode != configuration.AddressingMode ||
+                                      oldPersonaState.CustomUser != configuration.CustomUserName ||
+                                      oldPersonaState.Prompt != configuration.SystemPrompt;
+
+                if (personaChanged)
+                {
+                    Log.Info("Persona configuration changed. Resetting conversation history.");
+                    InitializeConversation();
+
+                    if (oldPersonaState.Name != configuration.AIName)
+                    {
+                        LoadHistoricalLogs(configuration.AIName);
+                    }
+                }
+
                 drawConfiguration = false;
             }
             ImGui.SameLine();
@@ -1254,10 +1759,12 @@ namespace XIVAICompanion
 
         public void Dispose()
         {
+            SaveCurrentSessionLog();
             drawConfiguration = false;
             CommandManager.RemoveHandler(commandName);
             PluginInterface.UiBuilder.Draw -= DrawConfiguration;
-            PluginInterface.UiBuilder.OpenMainUi -= OpenConfig;
+            PluginInterface.UiBuilder.Draw -= DrawChatWindow;
+            PluginInterface.UiBuilder.OpenMainUi -= OpenChatWindow;
             PluginInterface.UiBuilder.OpenConfigUi -= OpenConfig;
             ClientState.Login -= OnLogin;
             ClientState.Logout -= OnLogout;
@@ -1311,5 +1818,93 @@ namespace XIVAICompanion
         public class GoogleSearch { }
         public class UrlContext { }
         #endregion
+    }
+
+    internal static class UIHelper
+    {
+        public class HeaderIconOptions
+        {
+            public string Tooltip { get; set; } = string.Empty;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct ImGuiWindow
+        {
+            [FieldOffset(0xC)] public ImGuiWindowFlags Flags;
+            [FieldOffset(0xD5)] public byte HasCloseButton;
+        }
+
+        [DllImport("cimgui", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern nint igGetCurrentWindow();
+
+        private static unsafe ImGuiWindow* GetCurrentWindow() => (ImGuiWindow*)igGetCurrentWindow();
+        private static unsafe ImGuiWindowFlags GetCurrentWindowFlags() => GetCurrentWindow()->Flags;
+        private static unsafe bool CurrentWindowHasCloseButton() => GetCurrentWindow()->HasCloseButton != 0;
+
+        private static uint _headerLastWindowID = 0;
+        private static ulong _headerLastFrame = 0;
+        private static uint _headerCurrentPos = 0;
+        private static float _headerImGuiButtonWidth = 0;
+
+        public static unsafe bool AddHeaderIcon(IDalamudPluginInterface pluginInterface, string id, FontAwesomeIcon icon, out bool pressed, HeaderIconOptions? options = null)
+        {
+            pressed = false;
+            if (ImGui.IsWindowCollapsed()) return false;
+
+            var scale = ImGuiHelpers.GlobalScale;
+            var currentID = ImGui.GetID(0);
+            if (currentID != _headerLastWindowID || _headerLastFrame != pluginInterface.UiBuilder.FrameCount)
+            {
+                _headerLastWindowID = currentID;
+                _headerLastFrame = pluginInterface.UiBuilder.FrameCount;
+                _headerCurrentPos = 0;
+                _headerImGuiButtonWidth = 0f;
+
+                if (CurrentWindowHasCloseButton())
+                    _headerImGuiButtonWidth += 17 * scale;
+                if (!GetCurrentWindowFlags().HasFlag(ImGuiWindowFlags.NoCollapse))
+                    _headerImGuiButtonWidth += 17 * scale;
+            }
+
+            var prevCursorPos = ImGui.GetCursorPos();
+            var buttonSize = new Vector2(20 * scale);
+            var buttonPos = new Vector2(ImGui.GetWindowWidth() - buttonSize.X - _headerImGuiButtonWidth - 20 * _headerCurrentPos++ * scale - ImGui.GetStyle().FramePadding.X * 2, ImGui.GetScrollY() + 1);
+
+            ImGui.SetCursorPos(buttonPos);
+            var drawList = ImGui.GetWindowDrawList();
+            drawList.PushClipRectFullScreen();
+
+            ImGui.InvisibleButton(id, buttonSize);
+            var itemMin = ImGui.GetItemRectMin();
+            var itemMax = ImGui.GetItemRectMax();
+            var halfSize = ImGui.GetItemRectSize() / 2;
+            var center = itemMin + halfSize;
+
+            if (ImGui.IsWindowHovered() && ImGui.IsMouseHoveringRect(itemMin, itemMax, false))
+            {
+                if (options != null && !string.IsNullOrEmpty(options.Tooltip))
+                {
+                    ImGui.SetTooltip(options.Tooltip);
+                }
+
+                drawList.AddCircleFilled(center, halfSize.X, ImGui.GetColorU32(ImGui.IsMouseDown(ImGuiMouseButton.Left) ? ImGuiCol.ButtonActive : ImGuiCol.ButtonHovered));
+                if (ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+                {
+                    pressed = true;
+                }
+            }
+
+            ImGui.SetCursorPos(buttonPos);
+
+            ImGui.PushFont(Dalamud.Interface.UiBuilder.IconFont);
+            var iconString = icon.ToIconString();
+            drawList.AddText(Dalamud.Interface.UiBuilder.IconFont, ImGui.GetFontSize(), itemMin + halfSize - ImGui.CalcTextSize(iconString) / 2, 0xFFFFFFFF, iconString);
+            ImGui.PopFont();
+
+            ImGui.PopClipRect();
+            ImGui.SetCursorPos(prevCursorPos);
+
+            return pressed;
+        }
     }
 }

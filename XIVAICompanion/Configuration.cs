@@ -26,12 +26,17 @@ namespace XIVAICompanion
         public bool EnableConversationHistory { get; set; } = true;
         public bool EnableAutoFallback { get; set; } = true;
 
-        // Log Display Settings
+        // Chat Log Display Settings
         public bool ShowPrompt { get; set; } = true;
         public bool RemoveLineBreaks { get; set; } = true;
         public bool ShowAdditionalInfo { get; set; } = false;
         public bool UseCustomColors { get; set; } = false;
         public Vector4 ForegroundColor { get; set; } = new Vector4(0.9f, 0.9f, 0.9f, 1.0f);
+
+        // Chat Window Settings
+        public bool SaveChatHistoryToFile { get; set; } = false;
+        public int SessionsToLoad { get; set; } = 1;
+        public int DaysToKeepLogs { get; set; } = 30;
 
         private IDalamudPluginInterface pluginInterface = null!;
 
