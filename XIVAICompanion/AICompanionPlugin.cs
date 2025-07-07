@@ -34,6 +34,8 @@ namespace XIVAICompanion
         public JObject? ResponseJson { get; init; }
         public HttpResponseMessage? HttpResponse { get; init; }
         public Exception? Exception { get; init; }
+        public int ResponseTokensUsed { get; init; }
+        public int? ThinkingBudgetUsed { get; init; }
     }
     public class AICompanionPlugin : IDalamudPlugin
     {
@@ -50,8 +52,10 @@ namespace XIVAICompanion
             }
         }
 
-        private const string commandName = "/ai";
-        private const int minimumThinkingBudget = 512;
+        private const string commandName = "/ai";        
+        private const int minResponseTokens = 512;
+        private const int maxResponseTokens = 8192;
+        private const int minimumThinkingBudget = 512; // Must match minResponseTokens above
 
         private static readonly HttpClient httpClient = new HttpClient();
 
@@ -59,7 +63,8 @@ namespace XIVAICompanion
         private readonly IChatGui chatGui;
 
         private bool drawConfiguration;
-                
+
+        // Configuration Buffers
         private string _apiKeyBuffer = string.Empty;
         private int _maxTokensBuffer;
         private readonly string[] _availableModels = { "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17" };
@@ -92,6 +97,7 @@ namespace XIVAICompanion
         private bool _useCustomColorsBuffer;
         private Vector4 _foregroundColorBuffer;
 
+        // Chat Window Stuff
         private bool _drawChatWindow;
         private string _chatInputBuffer = string.Empty;
         private readonly List<ChatMessage> _historicalChatLog = new();
@@ -750,15 +756,20 @@ namespace XIVAICompanion
             try
             {
                 string sanitizedName = GetSanitizedAiName(aiName);
-                string searchPattern = $"{sanitizedName}_*.txt";
 
-                var logFiles = _chatLogsFolder.GetFiles(searchPattern)
+                var logFiles = _chatLogsFolder.GetFiles("*.txt")
+                                              .Where(file => {
+                                                  int delimiterIndex = file.Name.LastIndexOf('@');
+                                                  if (delimiterIndex <= 0) return false;
+                                                  string namePart = file.Name.Substring(0, delimiterIndex);
+                                                  return namePart == sanitizedName;
+                                              })
                                               .OrderByDescending(f => f.Name)
                                               .Take(configuration.SessionsToLoad)
                                               .Reverse()
                                               .ToList();
 
-                Log.Info($"Found {logFiles.Count} historical chat logs for '{aiName}' to load.");
+                Log.Info($"Found {logFiles.Count} historical chat logs for the exact persona '{aiName}' to load.");
 
                 foreach (var file in logFiles)
                 {
@@ -926,7 +937,7 @@ namespace XIVAICompanion
                 string sanitizedName = GetSanitizedAiName(aiNameToUse);
 
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                string fileName = $"{sanitizedName}_{timestamp}.txt";
+                string fileName = $"{sanitizedName}@{timestamp}.txt";
                 string filePath = Path.Combine(_chatLogsFolder.FullName, fileName);
 
                 var logContent = new StringBuilder();
@@ -974,6 +985,7 @@ namespace XIVAICompanion
 
         private async Task<ApiResult> SendPromptInternal(string input, string modelToUse, bool isStateless)
         {
+            int responseTokensToUse = configuration.MaxTokens;
             int? thinkingBudget = minimumThinkingBudget;
             string userPrompt;
             bool useGoogleSearch = false;
@@ -990,13 +1002,15 @@ namespace XIVAICompanion
             if (currentPrompt.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
             {
                 userPrompt = currentPrompt.Substring("google ".Length).Trim();
-                thinkingBudget = configuration.MaxTokens;
+                responseTokensToUse = maxResponseTokens;
+                thinkingBudget = maxResponseTokens;
                 useGoogleSearch = true;
             }
             else if (currentPrompt.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
             {
                 userPrompt = currentPrompt.Substring("think ".Length).Trim();
-                thinkingBudget = configuration.MaxTokens;
+                responseTokensToUse = maxResponseTokens;
+                thinkingBudget = maxResponseTokens;
             }
             else
             {
@@ -1047,7 +1061,7 @@ namespace XIVAICompanion
                 Contents = requestContents,
                 GenerationConfig = new GenerationConfig
                 {
-                    MaxOutputTokens = configuration.MaxTokens,
+                    MaxOutputTokens = responseTokensToUse,
                     Temperature = 1.0,
                     ThinkingConfig = thinkingBudget.HasValue
                         ? new ThinkingConfig { ThinkingBudget = thinkingBudget.Value }
@@ -1099,7 +1113,14 @@ namespace XIVAICompanion
                 if (finishReason == "MAX_TOKENS")
                 {                    
                     if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
-                    return new ApiResult { WasSuccessful = false, ResponseJson = responseJson, HttpResponse = response };
+                    return new ApiResult
+                    {
+                        WasSuccessful = false,
+                        ResponseJson = responseJson,
+                        HttpResponse = response,
+                        ResponseTokensUsed = responseTokensToUse,
+                        ThinkingBudgetUsed = thinkingBudget
+                    };
                 }
 
                 if (text != null)
@@ -1169,7 +1190,8 @@ namespace XIVAICompanion
                         infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
                         infoBuilder.AppendLine($"Prompt: {userPrompt}");
                         infoBuilder.AppendLine($"Model: {modelToUse}");
-                        if (thinkingBudget == configuration.MaxTokens)
+                        infoBuilder.AppendLine($"Response Token Limit: {responseTokensToUse}");
+                        if (thinkingBudget == maxResponseTokens)
                         {
                             infoBuilder.AppendLine($"Thinking Budget: Maximum ({thinkingBudget})");
                         }
@@ -1201,19 +1223,47 @@ namespace XIVAICompanion
 
                         PrintMessageToChat(infoBuilder.ToString());
                     }
-                    return new ApiResult { WasSuccessful = true };
+
+                    var promptTokens = (int?)responseJson.SelectToken("usageMetadata.promptTokenCount") ?? 0;
+                    var responseTokens = (int?)responseJson.SelectToken("usageMetadata.candidatesTokenCount") ?? 0;
+                    if (responseTokens == 0)
+                    {
+                        responseTokens = (int?)responseJson.SelectToken("usageMetadata.completionTokenCount") ?? 0;
+                    }
+                    var totalTokens = promptTokens + responseTokens;
+                    Log.Info($"API Call Success: Model='{modelToUse}', ResponseTokenLimit={responseTokensToUse}, ThinkingBudget={thinkingBudget ?? 0}, Tokens=[P: {promptTokens}, R: {responseTokens}, T: {totalTokens}]");
+
+                    return new ApiResult
+                    {
+                        WasSuccessful = true,
+                        ResponseTokensUsed = responseTokensToUse,
+                        ThinkingBudgetUsed = thinkingBudget
+                    };
                 }
                 else
                 {
                     if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
-                    return new ApiResult { WasSuccessful = false, ResponseJson = responseJson, HttpResponse = response };
+                    return new ApiResult
+                    {
+                        WasSuccessful = false,
+                        ResponseJson = responseJson,
+                        HttpResponse = response,
+                        ResponseTokensUsed = responseTokensToUse,
+                        ThinkingBudgetUsed = thinkingBudget
+                    };
                 }
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "A critical network or parsing error occurred in SendPromptInternal for model {model}", modelToUse);
                 if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
-                return new ApiResult { WasSuccessful = false, Exception = ex };
+                return new ApiResult
+                {
+                    WasSuccessful = false,
+                    Exception = ex,
+                    ResponseTokensUsed = responseTokensToUse,
+                    ThinkingBudgetUsed = thinkingBudget
+                };
             }
         }
 
@@ -1247,41 +1297,56 @@ namespace XIVAICompanion
             var primaryResult = primaryFailure.Result;
 
             string finalErrorMessage;
-
             string userPrompt = GetCleanPromptText(input);
+
+            string httpStatus = primaryResult.HttpResponse != null ? $"Status: {(int)primaryResult.HttpResponse.StatusCode} {primaryResult.HttpResponse.ReasonPhrase}" : "Status: N/A";
+            string? rawResponse = primaryResult.ResponseJson?.ToString(Formatting.Indented);
+
+            int responseTokenLimit = primaryResult.ResponseTokensUsed;
+            int? thinkingBudget = primaryResult.ThinkingBudgetUsed;
 
             if (configuration.EnableAutoFallback && failedAttempts.Count > 1)
             {
                 string primaryReason = "an unknown error";
-
                 if (primaryResult.HttpResponse?.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
                     primaryReason = "API rate limit reached (RPM or RPD)";
-                    Log.Warning("API Failure (Fallback Path): Primary model hit rate limit. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
                 }
                 else if (primaryResult.ResponseJson?.SelectToken("promptFeedback.blockReason") is JToken blockReasonToken)
                 {
                     primaryReason = $"the prompt was blocked (Reason: {blockReasonToken})";
-                    Log.Warning("API Failure (Fallback Path): Primary model blocked prompt. Reason: {Reason}. Model: {Model}, Prompt: {Prompt}", blockReasonToken, primaryModelUsed, userPrompt);
                 }
                 else if ((string?)primaryResult.ResponseJson?.SelectToken("candidates[0].finishReason") == "MAX_TOKENS")
                 {
                     primaryReason = "the response exceeded the 'max_tokens' limit";
-                    Log.Warning("API Failure (Fallback Path): {Reason}. This is a configuration issue. Model: {Model}, Prompt: {Prompt}", primaryReason, primaryModelUsed, userPrompt);
                 }
-                else
+                finalErrorMessage = $"{_aiNameBuffer}>> Error: The request to your primary model failed because {primaryReason}. Automatic fallback to other models was also unsuccessful.";
+
+                var logBuilder = new StringBuilder();
+                logBuilder.AppendLine($"API Failure (Fallback Path): All {failedAttempts.Count} attempts failed. Detailed breakdown:");
+
+                for (int i = 0; i < failedAttempts.Count; i++)
                 {
-                    Log.Warning("API Failure (Fallback Path): Primary model failed with an unknown error. See full log dump in 'Additional Info'. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
+                    var attempt = failedAttempts[i];
+                    var attemptResult = attempt.Result;
+                    string attemptHttpStatus = attemptResult.HttpResponse != null ? $"{(int)attemptResult.HttpResponse.StatusCode} {attemptResult.HttpResponse.ReasonPhrase}" : "N/A";
+                    string? attemptRawResponse = attemptResult.ResponseJson?.ToString(Formatting.Indented);
+
+                    logBuilder.AppendLine($"--- Attempt {i + 1} of {failedAttempts.Count} ({attempt.Model}) ---");
+                    logBuilder.AppendLine($"--> Status: {attemptHttpStatus}");
+                    logBuilder.AppendLine($"--> Params: ResponseTokenLimit={attemptResult.ResponseTokensUsed}, ThinkingBudget={attemptResult.ThinkingBudgetUsed ?? 0}");
+                    logBuilder.AppendLine($"--> Prompt: {userPrompt}");
+                    logBuilder.AppendLine($"--> RawResponse:{Environment.NewLine}{attemptRawResponse ?? "N/A"}");
                 }
 
-                finalErrorMessage = $"{_aiNameBuffer}>> Error: The request to your primary model failed because {primaryReason}. Automatic fallback to other models was also unsuccessful.";
+                Log.Warning(logBuilder.ToString());
             }
             else
             {
                 if (primaryResult.Exception != null)
                 {
                     finalErrorMessage = $"{_aiNameBuffer}>> An unexpected error occurred: {primaryResult.Exception.Message}";
-                    Log.Error(primaryResult.Exception, "A critical network or parsing error occurred. Prompt: {Prompt}", userPrompt);
+                    Log.Error(primaryResult.Exception, $"A critical network or parsing error occurred. Prompt: {{Prompt}}, ResponseTokenLimit: {{ResponseTokenLimit}}, ThinkingBudget: {{ThinkingBudget}}", userPrompt, responseTokenLimit, thinkingBudget ?? 0);
                 }
                 else if (primaryResult.ResponseJson != null && primaryResult.HttpResponse != null)
                 {
@@ -1291,28 +1356,43 @@ namespace XIVAICompanion
                     if (primaryResult.HttpResponse.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
                         finalErrorMessage = $"{_aiNameBuffer}>> Error: API rate limit reached. This could be Requests Per Minute (RPM) or Requests Per Day (RPD).";
-                        Log.Warning("API Failure: Rate Limit Exceeded. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
+                        Log.Warning($"API Failure: Rate Limit Exceeded.{Environment.NewLine}" +
+                                    $"--> {httpStatus}{Environment.NewLine}" +
+                                    $"--> Model: {primaryModelUsed}, ResponseTokenLimit: {responseTokenLimit}, ThinkingBudget: {thinkingBudget ?? 0}{Environment.NewLine}" +
+                                    $"--> Prompt: {userPrompt}");
                     }
                     else if (finishReason == "MAX_TOKENS")
                     {
                         finalErrorMessage = $"{_aiNameBuffer}>> Error: The response was stopped because it exceeded the 'max_tokens' limit. You can increase this value in /ai cfg.";
-                        Log.Warning("API Failure: Max Tokens Exceeded. This is a configuration issue. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
+                        Log.Warning($"API Failure: Max Tokens Exceeded. This is a configuration issue.{Environment.NewLine}" +
+                                    $"--> Configured Limit: {responseTokenLimit}{Environment.NewLine}" +
+                                    $"--> {httpStatus}{Environment.NewLine}" +
+                                    $"--> Model: {primaryModelUsed}, ThinkingBudget: {thinkingBudget ?? 0}{Environment.NewLine}" +
+                                    $"--> Prompt: {userPrompt}");
                     }
                     else if (!string.IsNullOrEmpty(blockReason))
                     {
                         finalErrorMessage = $"{_aiNameBuffer}>> Error: The prompt was blocked by the API. Reason: {blockReason}.";
-                        Log.Warning("API Failure: Prompt Blocked. Reason: {Reason}. Model: {Model}, Prompt: {Prompt}", blockReason, primaryModelUsed, userPrompt);
+                        Log.Warning($"API Failure: Prompt Blocked.{Environment.NewLine}" +
+                                    $"--> Reason: {blockReason}{Environment.NewLine}" +
+                                    $"--> {httpStatus}{Environment.NewLine}" +
+                                    $"--> Model: {primaryModelUsed}, ResponseTokenLimit: {responseTokenLimit}, ThinkingBudget: {thinkingBudget ?? 0}{Environment.NewLine}" +
+                                    $"--> Prompt: {userPrompt}");
                     }
                     else
                     {
                         finalErrorMessage = $"{_aiNameBuffer}>> Error: The request was rejected by the API for an unknown reason.";
-                        Log.Warning("API Failure: Request rejected for an unknown reason. See full log dump in 'Additional Info'. Model: {Model}, Prompt: {Prompt}", primaryModelUsed, userPrompt);
+                        Log.Warning($"API Failure: Request rejected for an unknown reason.{Environment.NewLine}" +
+                                    $"--> {httpStatus}{Environment.NewLine}" +
+                                    $"--> Model: {primaryModelUsed}, ResponseTokenLimit: {responseTokenLimit}, ThinkingBudget: {thinkingBudget ?? 0}{Environment.NewLine}" +
+                                    $"--> Prompt: {userPrompt}{Environment.NewLine}" +
+                                    $"--> RawResponse:{Environment.NewLine}{rawResponse ?? "N/A"}");
                     }
                 }
                 else
                 {
                     finalErrorMessage = $"{_aiNameBuffer}>> The request failed with an unknown critical error.";
-                    Log.Error("A critical unknown error occurred. The API response was likely null or malformed. Prompt: {Prompt}", userPrompt);
+                    Log.Error("A critical unknown error occurred. Prompt: {Prompt}, ResponseTokenLimit: {ResponseTokenLimit}, ThinkingBudget: {ThinkingBudget}", userPrompt, responseTokenLimit, thinkingBudget ?? 0);
                 }
             }
 
@@ -1324,23 +1404,36 @@ namespace XIVAICompanion
                 infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
                 infoBuilder.AppendLine($"Prompt: {userPrompt}");
                 infoBuilder.AppendLine($"Primary Model Setting: {primaryModelUsed}");
-                int? promptTokenCount = (int?)primaryResult.ResponseJson?.SelectToken("usageMetadata.promptTokenCount");
-                if (promptTokenCount.HasValue)
+
+                infoBuilder.AppendLine($"Response Token Limit: {responseTokenLimit}");
+
+                if (thinkingBudget == maxResponseTokens)
                 {
-                    infoBuilder.AppendLine($"Prompt Token Usage: {promptTokenCount}");
+                    infoBuilder.AppendLine($"Thinking Budget: Maximum ({thinkingBudget})");
                 }
+                else if (thinkingBudget > 0)
+                {
+                    infoBuilder.AppendLine($"Thinking Budget: Standard ({thinkingBudget})");
+                }
+                else
+                {
+                    infoBuilder.AppendLine($"Thinking Budget: Disabled ({thinkingBudget ?? 0})");
+                }
+
                 infoBuilder.AppendLine("--- Attempt Breakdown ---");
                 for (int i = 0; i < failedAttempts.Count; i++)
                 {
                     var attempt = failedAttempts[i];
                     string? finishReason = (string?)attempt.Result.ResponseJson?.SelectToken("candidates[0].finishReason");
                     string? blockReason = (string?)attempt.Result.ResponseJson?.SelectToken("promptFeedback.blockReason");
-                    string status = attempt.Result.HttpResponse != null ? $"{(int)attempt.Result.HttpResponse.StatusCode} - {attempt.Result.HttpResponse.StatusCode}" : "N/A";
+                    string status = attempt.Result.HttpResponse != null ? $"{(int)attempt.Result.HttpResponse.StatusCode} - {attempt.Result.HttpResponse.ReasonPhrase}" : "N/A";
+
                     infoBuilder.AppendLine($"Attempt {i + 1} ({attempt.Model}): FAILED");
                     infoBuilder.AppendLine($"  Status: {status}");
                     infoBuilder.AppendLine($"  Finish Reason: {finishReason ?? "N/A"}");
                     infoBuilder.AppendLine($"  Block Reason: {blockReason ?? "N/A"}");
                 }
+
                 PrintMessageToChat(infoBuilder.ToString().TrimEnd());
             }
         }
@@ -1422,12 +1515,9 @@ namespace XIVAICompanion
                 Util.OpenLink("https://aistudio.google.com/app/apikey");
             }
             ImGui.Spacing();
-            int minTokens = minimumThinkingBudget;
-            int maxTokens = 8192;
-
-            if (ImGui.SliderInt("Max Tokens", ref _maxTokensBuffer, minTokens, maxTokens))
+            if (ImGui.SliderInt("Max Tokens", ref _maxTokensBuffer, minResponseTokens, maxResponseTokens))
             {
-                _maxTokensBuffer = Math.Clamp(_maxTokensBuffer, minTokens, maxTokens);
+                _maxTokensBuffer = Math.Clamp(_maxTokensBuffer, minResponseTokens, maxResponseTokens);
             }
             if (ImGui.IsItemHovered())
             {
