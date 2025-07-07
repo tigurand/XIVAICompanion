@@ -14,6 +14,12 @@
         "resolved": "1.2.25",
         "contentHash": "xCXiw7BCxHJ8pF6wPepRUddlh2dlQlbr81gXA72hdk4FLHkKXas7EH/n+fk5UCA/YfMqG1Z6XaPiUjDbUNBUzg=="
       },
+      "ECommons": {
+        "type": "Direct",
+        "requested": "[3.0.0.4, )",
+        "resolved": "3.0.0.4",
+        "contentHash": "9SfGiyi/ro3iAfvskx+P2WMbAZkpHW0Wg2/XVpBznUuSwXJOlWDV8ekzfROIgfpCVuC+eUFNd3tPhFFl6vwjvQ=="
+      },
       "Newtonsoft.Json": {
         "type": "Direct",
         "requested": "[13.0.3, )",

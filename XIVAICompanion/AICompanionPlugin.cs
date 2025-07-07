@@ -6,6 +6,8 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility;
+using ECommons;
+using ECommons.Automation;
 using ImGuiNET;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -52,7 +54,7 @@ namespace XIVAICompanion
             }
         }
 
-        private const string commandName = "/ai";        
+        private const string commandName = "/ai";
         private const int minResponseTokens = 512;
         private const int maxResponseTokens = 8192;
         private const int minimumThinkingBudget = 512; // Must match minResponseTokens above
@@ -91,9 +93,9 @@ namespace XIVAICompanion
         private readonly List<Content> _conversationHistory = new();
         private bool _enableAutoFallbackBuffer;
 
-        private bool _showPromptBuffer;        
+        private bool _showPromptBuffer;
         private bool _removeLineBreaksBuffer;
-        private bool _showAdditionalInfoBuffer;        
+        private bool _showAdditionalInfoBuffer;
         private bool _useCustomColorsBuffer;
         private Vector4 _foregroundColorBuffer;
 
@@ -122,6 +124,8 @@ namespace XIVAICompanion
 
         public AICompanionPlugin(IDalamudPluginInterface dalamudPluginInterface, IChatGui chatGui, ICommandManager commandManager)
         {
+            ECommonsMain.Init(dalamudPluginInterface, this);
+
             this.chatGui = chatGui;
             configuration = dalamudPluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
             configuration.Initialize(dalamudPluginInterface);
@@ -138,7 +142,7 @@ namespace XIVAICompanion
             dalamudPluginInterface.UiBuilder.Draw += DrawConfiguration;
             dalamudPluginInterface.UiBuilder.Draw += DrawChatWindow;
             dalamudPluginInterface.UiBuilder.OpenMainUi += OpenChatWindow;
-            dalamudPluginInterface.UiBuilder.OpenConfigUi += OpenConfig;            
+            dalamudPluginInterface.UiBuilder.OpenConfigUi += OpenConfig;
 
             CommandManager.AddHandler(commandName, new CommandInfo(AICommand)
             {
@@ -181,7 +185,7 @@ namespace XIVAICompanion
             });
 
             ClientState.Login += OnLogin;
-            ClientState.Logout += OnLogout;            
+            ClientState.Logout += OnLogout;
 
             Framework.RunOnFrameworkThread(() =>
             {
@@ -562,7 +566,7 @@ namespace XIVAICompanion
                         configuration.DaysToKeepLogs = _daysToKeepLogsBuffer;
                         configuration.Save();
                     }
-                    
+
                     if (ImGui.IsItemHovered())
                     {
                         ImGui.SetTooltip("Set to 0 to disable auto-deletion.");
@@ -655,6 +659,19 @@ namespace XIVAICompanion
                         {
                             ImGui.SetClipboardText(fullLine);
                         }
+
+                        ImGui.Separator();
+
+                        if (ImGui.Selectable("Speak in Current Chat Channel"))
+                        {
+                            SendMessageToGameChat(chatMessage.Message);
+                        }
+                        if (ImGui.Selectable("Share to Current Chat Channel"))
+                        {
+                            string prefix = $"{chatMessage.Author}: ";
+                            SendMessageToGameChat(chatMessage.Message, prefix);
+                        }
+
                         ImGui.EndPopup();
                     }
                 }
@@ -955,6 +972,41 @@ namespace XIVAICompanion
             }
         }
 
+        private void SendMessageToGameChat(string message, string? prefix = null)
+        {
+            try
+            {
+                const int chatByteLimit = 500;
+                var encoding = Encoding.UTF8;
+
+                string finalPrefix = prefix ?? string.Empty;
+                int prefixBytes = encoding.GetByteCount(finalPrefix);
+
+                if (prefixBytes >= chatByteLimit)
+                {
+                    Log.Warning($"Cannot send message to chat because the prefix is too long in bytes: {finalPrefix}");
+                    PrintMessageToChat($"{Name}>> Cannot send message, prefix is too long.");
+                    return;
+                }
+
+                int maxContentBytes = chatByteLimit - prefixBytes;
+
+                var chunks = SplitIntoChunksByBytes(message, maxContentBytes).ToList();
+                Log.Info($"Sending message to chat in {chunks.Count} chunk(s) with prefix '{finalPrefix}'.");
+
+                foreach (var chunk in chunks)
+                {
+                    string finalMessage = finalPrefix + chunk;
+                    Chat.SendMessage(finalMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "An error occurred while trying to send a message to game chat.");
+                PrintMessageToChat($"{Name}>> An error occurred while trying to send the message.");
+            }
+        }
+
         private IEnumerable<string> SplitIntoChunks(string text, int chunkSize)
         {
             if (string.IsNullOrEmpty(text) || text.Length <= chunkSize)
@@ -980,6 +1032,59 @@ namespace XIVAICompanion
 
                 yield return text.Substring(offset, size).TrimStart();
                 offset += size;
+            }
+        }
+
+        private IEnumerable<string> SplitIntoChunksByBytes(string text, int maxChunkByteSize)
+        {
+            if (string.IsNullOrEmpty(text)) yield break;
+
+            var encoding = Encoding.UTF8;
+            if (encoding.GetByteCount(text) <= maxChunkByteSize)
+            {
+                yield return text;
+                yield break;
+            }
+
+            int currentPos = 0;
+            while (currentPos < text.Length)
+            {
+                int searchLength = Math.Min(text.Length - currentPos, maxChunkByteSize);
+
+                while (encoding.GetByteCount(text, currentPos, searchLength) > maxChunkByteSize)
+                {
+                    searchLength--;
+                }
+
+                if (searchLength == 0)
+                {
+                    Log.Error($"Cannot split message. A single character at position {currentPos} exceeds the max byte size of {maxChunkByteSize}.");
+                    yield break;
+                }
+
+                int maxCharCount = searchLength;
+                string potentialChunk = text.Substring(currentPos, maxCharCount);
+
+                bool isLastChunk = (currentPos + maxCharCount) >= text.Length;
+
+                int breakPos = potentialChunk.LastIndexOf(' ');
+
+                if (!isLastChunk && breakPos > 0)
+                {
+                    string finalChunk = potentialChunk.Substring(0, breakPos);
+                    yield return finalChunk;
+                    currentPos += finalChunk.Length;
+                }
+                else
+                {
+                    yield return potentialChunk;
+                    currentPos += potentialChunk.Length;
+                }
+
+                while (currentPos < text.Length && text[currentPos] == ' ')
+                {
+                    currentPos++;
+                }
             }
         }
 
@@ -1111,7 +1216,7 @@ namespace XIVAICompanion
                 string? finishReason = (string?)responseJson.SelectToken("candidates[0].finishReason");
 
                 if (finishReason == "MAX_TOKENS")
-                {                    
+                {
                     if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
                     return new ApiResult
                     {
@@ -1843,6 +1948,7 @@ namespace XIVAICompanion
 
         public void Dispose()
         {
+            ECommonsMain.Dispose();
             SaveCurrentSessionLog();
             drawConfiguration = false;
             CommandManager.RemoveHandler(commandName);
