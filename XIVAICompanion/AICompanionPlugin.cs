@@ -522,8 +522,8 @@ namespace XIVAICompanion
                     {
                         ImGui.SetTooltip(
                             "Saves the chat log to a text file for viewing later.\n" +
-                            "This is separate from the AI's short-term memory (in the main config)\n" +
-                            "and does not affect the conversation context.");
+                            "This is separate from the AI's short-term memory (in the main config).\n" +
+                            "Does not affect the conversation context.");
                     }
 
                     if (!_saveChatToFileBuffer)
@@ -532,8 +532,10 @@ namespace XIVAICompanion
                         ImGui.BeginDisabled();
                     }
 
+                    ImGui.Text("Load Previous");
+                    ImGui.SameLine();
                     ImGui.SetNextItemWidth(100);
-                    if (ImGui.InputInt("Load Previous Sessions", ref _sessionsToLoadBuffer, 1, 5))
+                    if (ImGui.InputInt("Sessions", ref _sessionsToLoadBuffer, 1, 5))
                     {
                         if (_sessionsToLoadBuffer < 0) _sessionsToLoadBuffer = 0;
                         configuration.SessionsToLoad = _sessionsToLoadBuffer;
@@ -1465,17 +1467,14 @@ namespace XIVAICompanion
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("You can also additionally use System Prompt to override this.\n" +
-                                 "Example:\n" +
-                                 "Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
+                                 "Example: Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
             }
 
-            ImGui.Checkbox("Prioritize System Prompt to define AI's name", ref _letSystemPromptHandleAINameBuffer);
+            ImGui.Checkbox("Use System Prompt to define AI's name", ref _letSystemPromptHandleAINameBuffer);
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip("CHECKED: The System Prompt below will be prioritized for how the AI identifies itself.\n" +
-                                 "Have small chance to behave abnormally if you set different name above.\n" +
-                                 "UNCHECKED: The AI's name will use the setting above.\n" +
-                                 "May behave abnormally if you have additional prompt for name.");
+                ImGui.SetTooltip("CHECKED: Ignores AI Name input and uses System Prompt for AI identity. Behavior depends solely on System Prompt.\n" +
+                                 "UNCHECKED: Adopts AI Name as persona. May conflict if System Prompt also specifies a name, causing unpredictable behavior.");
             }
             ImGui.SameLine();
             ImGui.SetCursorPosX(500.0f);
@@ -1483,8 +1482,7 @@ namespace XIVAICompanion
             if (ImGui.IsItemHovered())
             {
                 ImGui.SetTooltip("You can also additionally use System Prompt to override this.\n" +
-                                 "Example:\n" +
-                                 "Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
+                                 "Example: Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
             }
             if (_addressingModeBuffer == 1)
             {
@@ -1494,8 +1492,7 @@ namespace XIVAICompanion
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip("You can also additionally use System Prompt to override this.\n" +
-                                     "Example:\n" +
-                                     "Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
+                                     "Example: Don't call me by my real name. Address me as Warrior of Light instead of my real name.");
                 }
             }
 
@@ -1655,11 +1652,8 @@ namespace XIVAICompanion
             ImGui.Checkbox("Conversation History", ref _enableHistoryBuffer);
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip("Allows the AI to remember the recent context of your conversation.\n" +
-                                "This creates a more natural, flowing dialogue but uses more tokens.\n" +
-                                "The AI may forget specific details from earlier in long conversations.\n" +
-                                "This short-term memory is cleared when the plugin starts, the persona changes,\n" +
-                                "or by using the /ai reset command.");
+                ImGui.SetTooltip("Enables AI to remember recent conversation context for smoother dialogue, using more tokens.\n" +
+                                 "May forget earlier details in long chats. Memory clears on plugin start, persona change, or with /ai reset.");
             }
             ImGui.SameLine();
             ImGui.SetCursorPosX(600.0f);
