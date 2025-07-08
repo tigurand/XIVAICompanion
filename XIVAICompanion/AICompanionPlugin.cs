@@ -1126,15 +1126,18 @@ namespace XIVAICompanion
                 "[SYSTEM INSTRUCTION: Language Protocol]\n" +
                 "CRITICAL:\n" +
                 "* Respond entirely in the primary language of the user's message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +
-                "* Always re-evaluate the language based solely on the current message, ignoring previous conversation languages and any contextual bias from sensitive or prominent terms. This is the highest-priority instruction for this turn.\n" +
+                "* Reset the response language used in previous messages. Apply the language protocol to the User Message below. This is the highest-priority instruction for this turn.\n" +
                 "[END SYSTEM INSTRUCTION]\n\n" +
-                $"--- User Message ---\n{userPrompt}\n\n[SYSTEM COMMAND: ";
+                $"--- User Message ---\n{userPrompt}\n\n[SYSTEM COMMAND: Answer the User Message in the language detected by the Language Protocol.";
 
             if (useGoogleSearch)
             {
-                finalUserPrompt += "Do not ask for confirmation. Do not acknowledge the request. Your sole function is to execute the search tool based on the user's message and then immediately provide a comprehensive, synthesized answer using the search results.";
+                finalUserPrompt += " Do not ask for confirmation. Do not acknowledge the request. Your sole function is to execute the search tool based on the user's message and then immediately provide a comprehensive, synthesized answer using the search results.]";
             }
-            finalUserPrompt += " Answer in correct language based on Language Protocol.]";
+            else
+            {
+                finalUserPrompt += "]";
+            }
 
             List<Content> requestContents;
             Content? userTurn = null;
@@ -1412,19 +1415,27 @@ namespace XIVAICompanion
 
             if (configuration.EnableAutoFallback && failedAttempts.Count > 1)
             {
-                string primaryReason = "an unknown error";
+                string? finishReason = (string?)primaryResult.ResponseJson?.SelectToken("candidates[0].finishReason");
+                string? blockReason = (string?)primaryResult.ResponseJson?.SelectToken("promptFeedback.blockReason");
+                string primaryReason;
+
                 if (primaryResult.HttpResponse?.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
                     primaryReason = "API rate limit reached (RPM or RPD)";
                 }
-                else if (primaryResult.ResponseJson?.SelectToken("promptFeedback.blockReason") is JToken blockReasonToken)
+                else if (!string.IsNullOrEmpty(finishReason) && finishReason != "STOP")
                 {
-                    primaryReason = $"the prompt was blocked (Reason: {blockReasonToken})";
+                    primaryReason = $"the response was terminated by the API (Reason: {finishReason})";
                 }
-                else if ((string?)primaryResult.ResponseJson?.SelectToken("candidates[0].finishReason") == "MAX_TOKENS")
+                else if (!string.IsNullOrEmpty(blockReason))
                 {
-                    primaryReason = "the response exceeded the 'max_tokens' limit";
+                    primaryReason = $"the prompt was blocked by the API (Reason: {blockReason})";
                 }
+                else
+                {
+                    primaryReason = "an unknown error";
+                }
+
                 finalErrorMessage = $"{_aiNameBuffer}>> Error: The request to your primary model failed because {primaryReason}. Automatic fallback to other models was also unsuccessful.";
 
                 var logBuilder = new StringBuilder();
@@ -1466,13 +1477,17 @@ namespace XIVAICompanion
                                     $"--> Model: {primaryModelUsed}, ResponseTokenLimit: {responseTokenLimit}, ThinkingBudget: {thinkingBudget ?? 0}{Environment.NewLine}" +
                                     $"--> Prompt: {userPrompt}");
                     }
-                    else if (finishReason == "MAX_TOKENS")
+                    else if (!string.IsNullOrEmpty(finishReason) && finishReason != "STOP")
                     {
-                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The response was stopped because it exceeded the 'max_tokens' limit. You can increase this value in /ai cfg.";
-                        Log.Warning($"API Failure: Max Tokens Exceeded. This is a configuration issue.{Environment.NewLine}" +
-                                    $"--> Configured Limit: {responseTokenLimit}{Environment.NewLine}" +
+                        finalErrorMessage = $"{_aiNameBuffer}>> Error: The response was terminated by the API. Reason: {finishReason}.";
+                        if (finishReason == "MAX_TOKENS")
+                        {
+                            finalErrorMessage += " You can increase this value in /ai cfg.";
+                        }
+                        Log.Warning($"API Failure: Response Terminated.{Environment.NewLine}" +
+                                    $"--> Reason: {finishReason}{Environment.NewLine}" +
                                     $"--> {httpStatus}{Environment.NewLine}" +
-                                    $"--> Model: {primaryModelUsed}, ThinkingBudget: {thinkingBudget ?? 0}{Environment.NewLine}" +
+                                    $"--> Model: {primaryModelUsed}, ResponseTokenLimit: {responseTokenLimit}, ThinkingBudget: {thinkingBudget ?? 0}{Environment.NewLine}" +
                                     $"--> Prompt: {userPrompt}");
                     }
                     else if (!string.IsNullOrEmpty(blockReason))
