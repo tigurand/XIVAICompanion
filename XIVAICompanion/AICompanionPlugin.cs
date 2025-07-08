@@ -301,7 +301,7 @@ namespace XIVAICompanion
 
                 _saveAsNameBuffer = "AI";
 
-                chatGui.Print($"{_aiNameBuffer}>> New profile template loaded. Configure and save it.");
+                PrintSystemMessage($"{_aiNameBuffer}>> New profile template loaded. Configure and save it.");
                 return;
             }
 
@@ -321,7 +321,7 @@ namespace XIVAICompanion
                     _customUserNameBuffer = persona.CustomUserName;
                     _systemPromptBuffer = persona.SystemPrompt;
 
-                    chatGui.Print($"{_aiNameBuffer}>> Profile '{profileName}' loaded into config window. Press 'Save and Close' to apply.");
+                    PrintSystemMessage($"{_aiNameBuffer}>> Profile '{profileName}' loaded into config window. Press 'Save and Close' to apply.");
                 }
             }
             catch (Exception ex)
@@ -354,12 +354,12 @@ namespace XIVAICompanion
                 LoadAvailablePersonas();
                 _selectedPersonaIndex = _personaFiles.FindIndex(f => f.Equals(fileName, StringComparison.OrdinalIgnoreCase));
 
-                chatGui.Print($"{_aiNameBuffer}>> Profile '{fileName}' saved successfully.");
+                PrintSystemMessage($"{_aiNameBuffer}>> Profile '{fileName}' saved successfully.");
             }
             catch (Exception ex)
             {
                 Log.Error(ex, $"Failed to save persona file: {fileName}");
-                chatGui.Print($"{_aiNameBuffer}>> Error: Failed to save profile '{fileName}'. See /xllog for details.");
+                PrintSystemMessage($"{_aiNameBuffer}>> Error: Failed to save profile '{fileName}'. See /xllog for details.");
             }
         }
 
@@ -397,7 +397,7 @@ namespace XIVAICompanion
         {
             if (string.IsNullOrEmpty(configuration.ApiKey))
             {
-                PrintMessageToChat($"{_aiNameBuffer}>> Error: API key is not set. Please configure it in /ai cfg.");
+                PrintSystemMessage($"{_aiNameBuffer}>> Error: API key is not set. Please configure it in /ai cfg.");
                 Log.Warning("Plugin configuration issue: API key is not set. User was prompted to open config.");
                 OpenConfig();
                 return;
@@ -405,7 +405,7 @@ namespace XIVAICompanion
 
             if (string.IsNullOrWhiteSpace(args))
             {
-                PrintMessageToChat($"{_aiNameBuffer}>> Error: No prompt provided. Please enter a message after the /ai command.");
+                PrintSystemMessage($"{_aiNameBuffer}>> Error: No prompt provided. Please enter a message after the /ai command.");
                 return;
             }
 
@@ -430,11 +430,11 @@ namespace XIVAICompanion
                 _enableHistoryBuffer = configuration.EnableConversationHistory;
                 if (configuration.EnableConversationHistory)
                 {
-                    PrintMessageToChat($"{_aiNameBuffer}>> Conversation history is now enabled.");
+                    PrintSystemMessage($"{_aiNameBuffer}>> Conversation history is now enabled.");
                 }
                 else
                 {
-                    PrintMessageToChat($"{_aiNameBuffer}>> Conversation history is now disabled.");
+                    PrintSystemMessage($"{_aiNameBuffer}>> Conversation history is now disabled.");
                 }
                 return;
             }
@@ -444,7 +444,7 @@ namespace XIVAICompanion
                 configuration.EnableConversationHistory = true;
                 configuration.Save();
                 _enableHistoryBuffer = configuration.EnableConversationHistory;
-                PrintMessageToChat($"{_aiNameBuffer}>> Conversation history is now enabled.");
+                PrintSystemMessage($"{_aiNameBuffer}>> Conversation history is now enabled.");
                 return;
             }
 
@@ -453,14 +453,14 @@ namespace XIVAICompanion
                 configuration.EnableConversationHistory = false;
                 configuration.Save();
                 _enableHistoryBuffer = configuration.EnableConversationHistory;
-                PrintMessageToChat($"{_aiNameBuffer}>> Conversation history is now disabled.");
+                PrintSystemMessage($"{_aiNameBuffer}>> Conversation history is now disabled.");
                 return;
             }
 
             if (processedArgs.Trim().Equals("reset", StringComparison.OrdinalIgnoreCase))
             {
                 InitializeConversation();
-                PrintMessageToChat($"{_aiNameBuffer}>> Conversation history has been cleared.");
+                PrintSystemMessage($"{_aiNameBuffer}>> Conversation history has been cleared.");
                 return;
             }
 
@@ -868,6 +868,11 @@ namespace XIVAICompanion
             chatGui.Print(seStringBuilder.Build());
         }
 
+        private void PrintSystemMessage(string message)
+        {
+            chatGui.Print(message);
+        }
+
         private async Task SendPrompt(string input, bool isGreeting = false)
         {
             bool isStateless = input.Trim().StartsWith("fresh ", StringComparison.OrdinalIgnoreCase);
@@ -895,11 +900,11 @@ namespace XIVAICompanion
 
             if (commandCheckString.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
             {
-                PrintMessageToChat($"{_aiNameBuffer}>> Performing Google Search...");
+                PrintSystemMessage($"{_aiNameBuffer}>> Performing Google Search...");
             }
             else if (commandCheckString.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
             {
-                PrintMessageToChat($"{_aiNameBuffer}>> Thinking deeply...");
+                PrintSystemMessage($"{_aiNameBuffer}>> Thinking deeply...");
             }
 
             int initialModelIndex;
@@ -935,7 +940,7 @@ namespace XIVAICompanion
             }
             else
             {
-                PrintMessageToChat($"{_aiNameBuffer}>> Error: All models failed to respond. Check your connection or API key.");
+                PrintSystemMessage($"{_aiNameBuffer}>> Error: All models failed to respond. Check your connection or API key.");
             }
         }
 
@@ -985,7 +990,7 @@ namespace XIVAICompanion
                 if (prefixBytes >= chatByteLimit)
                 {
                     Log.Warning($"Cannot send message to chat because the prefix is too long in bytes: {finalPrefix}");
-                    PrintMessageToChat($"{Name}>> Cannot send message, prefix is too long.");
+                    PrintSystemMessage($"{_aiNameBuffer}>> Cannot send message, prefix is too long.");
                     return;
                 }
 
@@ -1003,7 +1008,7 @@ namespace XIVAICompanion
             catch (Exception ex)
             {
                 Log.Error(ex, "An error occurred while trying to send a message to game chat.");
-                PrintMessageToChat($"{Name}>> An error occurred while trying to send the message.");
+                PrintSystemMessage($"{_aiNameBuffer}>> An error occurred while trying to send the message.");
             }
         }
 
@@ -1126,9 +1131,10 @@ namespace XIVAICompanion
                 "[SYSTEM INSTRUCTION: Language Protocol]\n" +
                 "CRITICAL:\n" +
                 "* Respond entirely in the primary language of the user's message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +
+                "* All descriptive actions or behaviors must also be rendered in the determined primary language of the User Message.\n" +
                 "* Reset the response language used in previous messages. Apply the language protocol to the User Message below. This is the highest-priority instruction for this turn.\n" +
                 "[END SYSTEM INSTRUCTION]\n\n" +
-                $"--- User Message ---\n{userPrompt}\n\n[SYSTEM COMMAND: Answer the User Message in the language detected by the Language Protocol.";
+                $"--- User Message ---\n{userPrompt}\n\n[SYSTEM COMMAND: Make sure to answer the User Message using the language detected by the Language Protocol.";
 
             if (useGoogleSearch)
             {
@@ -1329,7 +1335,7 @@ namespace XIVAICompanion
                             infoBuilder.Append($"Total Token Usage: {promptTokenCount.Value + responseTokenCount.Value}");
                         }
 
-                        PrintMessageToChat(infoBuilder.ToString());
+                        PrintSystemMessage(infoBuilder.ToString());
                     }
 
                     var promptTokens = (int?)responseJson.SelectToken("usageMetadata.promptTokenCount") ?? 0;
@@ -1516,7 +1522,7 @@ namespace XIVAICompanion
                 }
             }
 
-            PrintMessageToChat(finalErrorMessage);
+            PrintSystemMessage(finalErrorMessage);
 
             if (configuration.ShowAdditionalInfo)
             {
@@ -1554,7 +1560,7 @@ namespace XIVAICompanion
                     infoBuilder.AppendLine($"  Block Reason: {blockReason ?? "N/A"}");
                 }
 
-                PrintMessageToChat(infoBuilder.ToString().TrimEnd());
+                PrintSystemMessage(infoBuilder.ToString().TrimEnd());
             }
         }
 
