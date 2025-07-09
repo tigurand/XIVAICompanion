@@ -1239,32 +1239,14 @@ namespace XIVAICompanion
 
                 if (text != null)
                 {
-                    string sanitizedText;
-                    const string endMarker = "[END SYSTEM INSTRUCTION]";
+                    string sanitizedText = text;
 
-                    int markerIndex = text.IndexOf(endMarker, StringComparison.Ordinal);
-                    if (markerIndex != -1)
+                    int lastPromptIndex = text.LastIndexOf(finalUserPrompt, StringComparison.Ordinal);
+
+                    if (lastPromptIndex != -1)
                     {
-                        sanitizedText = text.Substring(markerIndex + endMarker.Length);
-                        sanitizedText = sanitizedText.TrimStart();
-                    }
-                    else
-                    {
-                        sanitizedText = text;
-                    }
-
-                    const string userMessageMarker = "--- User Message ---";
-                    markerIndex = sanitizedText.IndexOf(userMessageMarker, StringComparison.Ordinal);
-
-                    if (markerIndex != -1)
-                    {
-                        int userPromptEndIndex = sanitizedText.IndexOf(userPrompt, markerIndex, StringComparison.Ordinal);
-
-                        if (userPromptEndIndex != -1)
-                        {
-                            sanitizedText = sanitizedText.Substring(userPromptEndIndex + userPrompt.Length);
-                            sanitizedText = sanitizedText.TrimStart();
-                        }
+                        sanitizedText = text.Substring(lastPromptIndex + finalUserPrompt.Length);
+                        sanitizedText = sanitizedText.TrimStart(' ', '\r', '\n', ']');
                     }
 
                     if (configuration.EnableConversationHistory && !isStateless)
