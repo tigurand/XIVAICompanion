@@ -116,6 +116,9 @@ namespace XIVAICompanion
         private int _chatHistoryIndex = -1;
         private bool _refocusChatInput;
 
+        private int _chatModeSelection = 0;
+        private bool _chatFreshMode = false;
+
         [PluginService] private static IClientState ClientState { get; set; } = null!;
         [PluginService] private static IDalamudPluginInterface PluginInterface { get; set; } = null!;
         [PluginService] private static ICommandManager CommandManager { get; set; } = null!;
@@ -442,7 +445,7 @@ namespace XIVAICompanion
             }
         }
 
-        private void ProcessAndSendPrompt(string rawPrompt)
+        private void ProcessAndSendPrompt(string rawPrompt, string? historyOverride = null)
         {
             string cleanPrompt = GetCleanPromptText(rawPrompt);
 
@@ -453,7 +456,7 @@ namespace XIVAICompanion
                 Message = cleanPrompt
             });
 
-            _chatInputHistory.Add(rawPrompt);
+            _chatInputHistory.Add(historyOverride ?? rawPrompt);
             if (_chatInputHistory.Count > 20)
             {
                 _chatInputHistory.RemoveAt(0);
@@ -467,9 +470,7 @@ namespace XIVAICompanion
             if (configuration.ShowPrompt)
             {
                 string characterName = GetPlayerDisplayName();
-
                 string promptToDisplay = GetCleanPromptText(processedArgs);
-
                 PrintMessageToChat($"{characterName}: {promptToDisplay}");
             }
 
@@ -480,7 +481,7 @@ namespace XIVAICompanion
         {
             if (!_drawChatWindow) return;
 
-            ImGui.SetNextWindowSizeConstraints(new Vector2(350, 250), new Vector2(9999, 9999));
+            ImGui.SetNextWindowSizeConstraints(new Vector2(450, 300), new Vector2(9999, 9999));
             ImGui.SetNextWindowSize(new Vector2(800, 600), ImGuiCond.FirstUseEver);
             if (ImGui.Begin($"{Name} Chat", ref _drawChatWindow))
             {
@@ -565,7 +566,7 @@ namespace XIVAICompanion
                     ImGui.Spacing();
                 }
 
-                var chatRegionHeight = ImGui.GetContentRegionAvail().Y - (ImGui.GetTextLineHeightWithSpacing() * 2.5f);
+                var chatRegionHeight = ImGui.GetContentRegionAvail().Y - (ImGui.GetTextLineHeightWithSpacing() * 3.5f);
                 ImGui.BeginChild("ChatLog", new Vector2(0, chatRegionHeight), true, ImGuiWindowFlags.HorizontalScrollbar);
 
                 var fullLog = _historicalChatLog.Concat(_currentSessionChatLog).ToList();
@@ -660,6 +661,23 @@ namespace XIVAICompanion
                 ImGui.EndChild();
                 ImGui.Separator();
 
+                ImGui.Spacing();
+                ImGui.AlignTextToFramePadding();
+                ImGui.Text("Mode:");
+                ImGui.SameLine();
+                ImGui.RadioButton("Normal", ref _chatModeSelection, 0);
+                ImGui.SameLine();
+                ImGui.RadioButton("Google", ref _chatModeSelection, 1);
+                ImGui.SameLine();
+                ImGui.RadioButton("Think", ref _chatModeSelection, 2);
+                ImGui.SameLine();
+                ImGui.Spacing();
+                ImGui.SameLine();
+                ImGui.Spacing();
+                ImGui.SameLine();
+                ImGui.Checkbox("Fresh", ref _chatFreshMode);
+                ImGui.Spacing();
+
                 bool messageSent = false;
 
                 if (_refocusChatInput || ImGui.IsWindowAppearing())
@@ -723,7 +741,28 @@ namespace XIVAICompanion
 
                 if (messageSent && !string.IsNullOrWhiteSpace(_chatInputBuffer))
                 {
-                    ProcessAndSendPrompt(_chatInputBuffer);
+                    string finalPrompt;
+                    string? historyText = null;
+
+                    bool isModeActive = _chatModeSelection != 0 || _chatFreshMode;
+
+                    if (isModeActive)
+                    {
+                        var promptBuilder = new StringBuilder();
+                        if (_chatFreshMode) promptBuilder.Append("fresh ");
+                        if (_chatModeSelection == 1) promptBuilder.Append("google ");
+                        else if (_chatModeSelection == 2) promptBuilder.Append("think ");
+                        promptBuilder.Append(_chatInputBuffer);
+                        finalPrompt = promptBuilder.ToString();
+                        historyText = _chatInputBuffer;
+                    }
+                    else
+                    {
+                        finalPrompt = _chatInputBuffer;
+                    }
+
+                    ProcessAndSendPrompt(finalPrompt, historyText);
+
                     _chatInputBuffer = string.Empty;
                     _refocusChatInput = true;
                 }
