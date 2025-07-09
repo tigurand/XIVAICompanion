@@ -1890,82 +1890,95 @@ namespace XIVAICompanion
             }
 
             ImGui.Separator();
+            if (ImGui.Button("Save"))
+            {
+                SaveChanges();
+            }
+
+            ImGui.SameLine();
             if (ImGui.Button("Save and Close"))
             {
-                var oldPersonaState = new
-                {
-                    Name = configuration.AIName,
-                    LetSystemPromptHandleName = configuration.LetSystemPromptHandleAIName,
-                    Mode = configuration.AddressingMode,
-                    CustomUser = configuration.CustomUserName,
-                    Prompt = configuration.SystemPrompt
-                };
-
-                if (oldPersonaState.Name != _aiNameBuffer)
-                {
-                    SaveCurrentSessionLog(oldPersonaState.Name);
-                    _currentSessionChatLog.Clear();
-                    _historicalChatLog.Clear();
-                }
-
-                configuration.AImodel = _availableModels[_selectedModelIndex];
-                configuration.ApiKey = _apiKeyBuffer;
-                configuration.MaxTokens = _maxTokensBuffer;
-                if (string.IsNullOrWhiteSpace(_aiNameBuffer))
-                {
-                    _aiNameBuffer = "AI";
-                }
-                configuration.AIName = _aiNameBuffer;
-                configuration.LetSystemPromptHandleAIName = _letSystemPromptHandleAINameBuffer;
-                configuration.AddressingMode = _addressingModeBuffer;
-                if (string.IsNullOrWhiteSpace(_customUserNameBuffer))
-                {
-                    _customUserNameBuffer = "Adventurer";
-                }
-                configuration.CustomUserName = _customUserNameBuffer;
-                configuration.SystemPrompt = _systemPromptBuffer;
-                configuration.ShowPrompt = _showPromptBuffer;
-                configuration.RemoveLineBreaks = _removeLineBreaksBuffer;
-                configuration.ShowAdditionalInfo = _showAdditionalInfoBuffer;
-                configuration.GreetOnLogin = _greetOnLoginBuffer;
-                if (string.IsNullOrWhiteSpace(_loginGreetingPromptBuffer))
-                {
-                    _loginGreetingPromptBuffer = "I'm back to Eorzea, please greet me.";
-                }
-                configuration.LoginGreetingPrompt = _loginGreetingPromptBuffer;
-                configuration.EnableConversationHistory = _enableHistoryBuffer;
-                configuration.EnableAutoFallback = _enableAutoFallbackBuffer;
-                configuration.UseCustomColors = _useCustomColorsBuffer;
-                configuration.ForegroundColor = _foregroundColorBuffer;
-
-                configuration.Save();
-
-                bool personaChanged = oldPersonaState.Name != configuration.AIName ||
-                                      oldPersonaState.LetSystemPromptHandleName != configuration.LetSystemPromptHandleAIName ||
-                                      oldPersonaState.Mode != configuration.AddressingMode ||
-                                      oldPersonaState.CustomUser != configuration.CustomUserName ||
-                                      oldPersonaState.Prompt != configuration.SystemPrompt;
-
-                if (personaChanged)
-                {
-                    Log.Info("Persona configuration changed. Resetting conversation history.");
-                    InitializeConversation();
-
-                    if (oldPersonaState.Name != configuration.AIName)
-                    {
-                        LoadHistoricalLogs(configuration.AIName);
-                    }
-                }
-
+                SaveChanges();
                 drawConfiguration = false;
             }
+
             ImGui.SameLine();
+            float openFolderButtonWidth = ImGui.CalcTextSize("Open Persona Folder").X + ImGui.GetStyle().FramePadding.X * 2.0f;
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + ImGui.GetContentRegionAvail().X - openFolderButtonWidth);
             if (ImGui.Button("Open Persona Folder"))
             {
                 Util.OpenLink(_personaFolder.FullName);
             }
 
             ImGui.End();
+        }
+
+        private void SaveChanges()
+        {
+            var oldPersonaState = new
+            {
+                Name = configuration.AIName,
+                LetSystemPromptHandleName = configuration.LetSystemPromptHandleAIName,
+                Mode = configuration.AddressingMode,
+                CustomUser = configuration.CustomUserName,
+                Prompt = configuration.SystemPrompt
+            };
+
+            if (oldPersonaState.Name != _aiNameBuffer)
+            {
+                SaveCurrentSessionLog(oldPersonaState.Name);
+                _currentSessionChatLog.Clear();
+                _historicalChatLog.Clear();
+            }
+
+            configuration.AImodel = _availableModels[_selectedModelIndex];
+            configuration.ApiKey = _apiKeyBuffer;
+            configuration.MaxTokens = _maxTokensBuffer;
+            if (string.IsNullOrWhiteSpace(_aiNameBuffer))
+            {
+                _aiNameBuffer = "AI";
+            }
+            configuration.AIName = _aiNameBuffer;
+            configuration.LetSystemPromptHandleAIName = _letSystemPromptHandleAINameBuffer;
+            configuration.AddressingMode = _addressingModeBuffer;
+            if (string.IsNullOrWhiteSpace(_customUserNameBuffer))
+            {
+                _customUserNameBuffer = "Adventurer";
+            }
+            configuration.CustomUserName = _customUserNameBuffer;
+            configuration.SystemPrompt = _systemPromptBuffer;
+            configuration.ShowPrompt = _showPromptBuffer;
+            configuration.RemoveLineBreaks = _removeLineBreaksBuffer;
+            configuration.ShowAdditionalInfo = _showAdditionalInfoBuffer;
+            configuration.GreetOnLogin = _greetOnLoginBuffer;
+            if (string.IsNullOrWhiteSpace(_loginGreetingPromptBuffer))
+            {
+                _loginGreetingPromptBuffer = "I'm back to Eorzea, please greet me.";
+            }
+            configuration.LoginGreetingPrompt = _loginGreetingPromptBuffer;
+            configuration.EnableConversationHistory = _enableHistoryBuffer;
+            configuration.EnableAutoFallback = _enableAutoFallbackBuffer;
+            configuration.UseCustomColors = _useCustomColorsBuffer;
+            configuration.ForegroundColor = _foregroundColorBuffer;
+
+            configuration.Save();
+
+            bool personaChanged = oldPersonaState.Name != configuration.AIName ||
+                                  oldPersonaState.LetSystemPromptHandleName != configuration.LetSystemPromptHandleAIName ||
+                                  oldPersonaState.Mode != configuration.AddressingMode ||
+                                  oldPersonaState.CustomUser != configuration.CustomUserName ||
+                                  oldPersonaState.Prompt != configuration.SystemPrompt;
+
+            if (personaChanged)
+            {
+                Log.Info("Persona configuration changed. Resetting conversation history.");
+                InitializeConversation();
+
+                if (oldPersonaState.Name != configuration.AIName)
+                {
+                    LoadHistoricalLogs(configuration.AIName);
+                }
+            }
         }
 
         public void Dispose()
