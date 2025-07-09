@@ -144,43 +144,9 @@ namespace XIVAICompanion
             dalamudPluginInterface.UiBuilder.OpenMainUi += OpenChatWindow;
             dalamudPluginInterface.UiBuilder.OpenConfigUi += OpenConfig;
 
-            CommandManager.AddHandler(commandName, new CommandInfo(AICommand)
+            CommandManager.AddHandler(commandName, new CommandInfo(OnCommand)
             {
-                HelpMessage = "/ai [whatever you want to say]: talk to your AI companion.",
-                ShowInHelp = true
-            });
-            CommandManager.AddHandler("/ai google", new CommandInfo(AICommand)
-            {
-                HelpMessage = "/ai google [whatever you want to ask]: use this when you want to ask up to date information from the internet.",
-                ShowInHelp = true
-            });
-            CommandManager.AddHandler("/ai think", new CommandInfo(AICommand)
-            {
-                HelpMessage = "/ai think [whatever you want to ask]: use this when you want better answer with slower response time.",
-                ShowInHelp = true
-            });
-            CommandManager.AddHandler("/ai fresh", new CommandInfo(AICommand)
-            {
-                HelpMessage = "/ai fresh [whatever you want to say]: Temporarily disable conversation history for this turn (1 time only).",
-                ShowInHelp = true
-            });
-            CommandManager.AddHandler("/ai cfg", new CommandInfo(AICommand)
-            {
-                HelpMessage = "Open configuration window.",
-                ShowInHelp = true
-            }); CommandManager.AddHandler("/ai history", new CommandInfo(AICommand)
-            {
-                HelpMessage = "Toggle conversation history. You can also specify on or off.",
-                ShowInHelp = true
-            });
-            CommandManager.AddHandler("/ai reset", new CommandInfo(AICommand)
-            {
-                HelpMessage = "Clear conversation history.",
-                ShowInHelp = true
-            });
-            CommandManager.AddHandler("/ai chat", new CommandInfo(AICommand)
-            {
-                HelpMessage = "Open the dedicated AI chat window.",
+                HelpMessage = "Talk to your AI companion. Use /ai help for subcommands.",
                 ShowInHelp = true
             });
 
@@ -393,78 +359,87 @@ namespace XIVAICompanion
             _conversationHistory.Add(new Content { Role = "user", Parts = new List<Part> { new Part { Text = GetSystemPrompt() } } });
             _conversationHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } });
         }
-        private void AICommand(string command, string args)
+
+        private void OnCommand(string command, string args)
         {
-            if (string.IsNullOrEmpty(configuration.ApiKey))
+            var parts = args.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            var subCommand = parts.Length > 0 ? parts[0].ToLower() : string.Empty;
+            var subCommandArgs = parts.Length > 1 ? parts[1] : string.Empty;
+
+            switch (subCommand)
             {
-                PrintSystemMessage($"{_aiNameBuffer}>> Error: API key is not set. Please configure it in /ai cfg.");
-                Log.Warning("Plugin configuration issue: API key is not set. User was prompted to open config.");
-                OpenConfig();
-                return;
+                case "google":
+                    ProcessAndSendPrompt($"google {subCommandArgs}");
+                    break;
+
+                case "think":
+                    ProcessAndSendPrompt($"think {subCommandArgs}");
+                    break;
+
+                case "fresh":
+                    ProcessAndSendPrompt($"fresh {subCommandArgs}");
+                    break;
+
+                case "cfg":
+                    OpenConfig();
+                    break;
+
+                case "chat":
+                    _drawChatWindow = true;
+                    break;
+
+                case "reset":
+                    InitializeConversation();
+                    PrintSystemMessage($"{_aiNameBuffer}>> Conversation history has been cleared.");
+                    break;
+
+                case "history":
+                    bool previousState = configuration.EnableConversationHistory;
+                    if (subCommandArgs.Equals("on", StringComparison.OrdinalIgnoreCase))
+                        configuration.EnableConversationHistory = true;
+                    else if (subCommandArgs.Equals("off", StringComparison.OrdinalIgnoreCase))
+                        configuration.EnableConversationHistory = false;
+                    else
+                        configuration.EnableConversationHistory = !configuration.EnableConversationHistory;
+
+                    if (previousState != configuration.EnableConversationHistory)
+                    {
+                        configuration.Save();
+                        _enableHistoryBuffer = configuration.EnableConversationHistory;
+                        PrintSystemMessage(configuration.EnableConversationHistory
+                            ? $"{_aiNameBuffer}>> Conversation history is now enabled."
+                            : $"{_aiNameBuffer}>> Conversation history is now disabled.");
+                    }
+                    break;
+
+                case "help":
+                    PrintSystemMessage("--- AI Companion Help ---");
+                    PrintSystemMessage("/ai [prompt] - Sends a standard prompt to the AI.");
+                    PrintSystemMessage("/ai google [prompt] - Uses Google Search for up-to-date or real-world info.");
+                    PrintSystemMessage("/ai think [prompt] - Slower, more thoughtful responses for complex questions.");
+                    PrintSystemMessage("/ai fresh [prompt] - Ignores conversation history for a single, clean response.");
+                    PrintSystemMessage("/ai cfg - Opens the configuration window.");
+                    PrintSystemMessage("/ai chat - Opens the dedicated chat window.");
+                    PrintSystemMessage("/ai history <on|off> - Enables, disables, or toggles conversation memory.");
+                    PrintSystemMessage("/ai reset - Clears the current conversation memory.");
+                    break;
+
+                default:
+                    if (string.IsNullOrEmpty(configuration.ApiKey))
+                    {
+                        PrintSystemMessage($"{_aiNameBuffer}>> Error: API key is not set. Please configure it in /ai cfg.");
+                        Log.Warning("Plugin configuration issue: API key is not set. User was prompted to open config.");
+                        OpenConfig();
+                        return;
+                    }
+                    if (string.IsNullOrWhiteSpace(args))
+                    {
+                        PrintSystemMessage($"{_aiNameBuffer}>> Error: No prompt provided. Use '/ai help' for commands.");
+                        return;
+                    }
+                    ProcessAndSendPrompt(args);
+                    break;
             }
-
-            if (string.IsNullOrWhiteSpace(args))
-            {
-                PrintSystemMessage($"{_aiNameBuffer}>> Error: No prompt provided. Please enter a message after the /ai command.");
-                return;
-            }
-
-            string processedArgs = ProcessTextAliases(args);
-
-            if (processedArgs.Trim().Equals("cfg", StringComparison.OrdinalIgnoreCase))
-            {
-                OpenConfig();
-                return;
-            }
-
-            if (processedArgs.Trim().Equals("chat", StringComparison.OrdinalIgnoreCase))
-            {
-                _drawChatWindow = true;
-                return;
-            }
-
-            if (processedArgs.Trim().Equals("history", StringComparison.OrdinalIgnoreCase))
-            {
-                configuration.EnableConversationHistory = !configuration.EnableConversationHistory;
-                configuration.Save();
-                _enableHistoryBuffer = configuration.EnableConversationHistory;
-                if (configuration.EnableConversationHistory)
-                {
-                    PrintSystemMessage($"{_aiNameBuffer}>> Conversation history is now enabled.");
-                }
-                else
-                {
-                    PrintSystemMessage($"{_aiNameBuffer}>> Conversation history is now disabled.");
-                }
-                return;
-            }
-
-            if (processedArgs.Trim().Equals("history on", StringComparison.OrdinalIgnoreCase))
-            {
-                configuration.EnableConversationHistory = true;
-                configuration.Save();
-                _enableHistoryBuffer = configuration.EnableConversationHistory;
-                PrintSystemMessage($"{_aiNameBuffer}>> Conversation history is now enabled.");
-                return;
-            }
-
-            if (processedArgs.Trim().Equals("history off", StringComparison.OrdinalIgnoreCase))
-            {
-                configuration.EnableConversationHistory = false;
-                configuration.Save();
-                _enableHistoryBuffer = configuration.EnableConversationHistory;
-                PrintSystemMessage($"{_aiNameBuffer}>> Conversation history is now disabled.");
-                return;
-            }
-
-            if (processedArgs.Trim().Equals("reset", StringComparison.OrdinalIgnoreCase))
-            {
-                InitializeConversation();
-                PrintSystemMessage($"{_aiNameBuffer}>> Conversation history has been cleared.");
-                return;
-            }
-
-            ProcessAndSendPrompt(processedArgs);
         }
 
         private void ProcessAndSendPrompt(string rawPrompt)
@@ -775,7 +750,8 @@ namespace XIVAICompanion
                 string sanitizedName = GetSanitizedAiName(aiName);
 
                 var logFiles = _chatLogsFolder.GetFiles("*.txt")
-                                              .Where(file => {
+                                              .Where(file =>
+                                              {
                                                   int delimiterIndex = file.Name.LastIndexOf('@');
                                                   if (delimiterIndex <= 0) return false;
                                                   string namePart = file.Name.Substring(0, delimiterIndex);
@@ -1127,23 +1103,27 @@ namespace XIVAICompanion
                 userPrompt = currentPrompt;
             }
 
-            string finalUserPrompt =
+            string finalUserPrompt;
+            string languageProtocol =
                 "[SYSTEM INSTRUCTION: Language Protocol]\n" +
                 "CRITICAL:\n" +
                 "* Respond entirely in the primary language of the user's message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +
                 "* All descriptive actions or behaviors must also be rendered in the determined primary language of the User Message.\n" +
                 "* Reset the response language used in previous messages. Apply the language protocol to the User Message below. This is the highest-priority instruction for this turn.\n" +
-                "[END SYSTEM INSTRUCTION]\n\n" +
-                $"--- User Message ---\n{userPrompt}\n\n[SYSTEM COMMAND: Make sure to answer the User Message using the language detected by the Language Protocol.";
-
+                "[END SYSTEM INSTRUCTION]\n\n";
             if (useGoogleSearch)
             {
-                finalUserPrompt += " Do not ask for confirmation. Do not acknowledge the request. Your sole function is to execute the search tool based on the user's message and then immediately provide a comprehensive, synthesized answer using the search results.]";
+                finalUserPrompt = "[SYSTEM COMMAND: GOOGLE SEARCH & LANGUAGE CONTROL]\n" +
+                    "1.  **PRIMARY DIRECTIVE:** Immediately use the Google Search tool to answer the *entire* User Message.\n" +
+                    "2.  **SECONDARY DIRECTIVE:** Adhere strictly to the Language Protocol provided below.\n" +
+                    "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.\n\n" +
+                    languageProtocol;
             }
             else
             {
-                finalUserPrompt += "]";
+                finalUserPrompt = languageProtocol;
             }
+            finalUserPrompt += $"--- User Message ---\n{userPrompt}\n\n[SYSTEM COMMAND: LANGUAGE CHECK]\nMake sure to answer the User Message using the language detected by the Language Protocol.]";
 
             List<Content> requestContents;
             Content? userTurn = null;
