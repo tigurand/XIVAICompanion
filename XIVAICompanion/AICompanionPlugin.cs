@@ -184,6 +184,9 @@ namespace XIVAICompanion
             {
                 _localPlayerName = ClientState.LocalPlayer.Name.ToString();
             }
+
+            LoadHistoricalLogs(configuration.AIName);
+
             if (configuration.GreetOnLogin && !_hasGreetedThisSession)
             {
                 _hasGreetedThisSession = true;
@@ -195,6 +198,20 @@ namespace XIVAICompanion
 
         private void OnLogout(int type, int code)
         {
+            EndSession();
+        }
+
+        private void EndSession()
+        {
+            Log.Info("Ending session logic initiated (Logout/Character Change).");
+            SaveCurrentSessionLog();
+
+            _currentSessionChatLog.Clear();
+            _historicalChatLog.Clear();
+
+            InitializeConversation();
+            Log.Info("Conversation history has been reset for the new session.");
+
             _localPlayerName = string.Empty;
             _hasGreetedThisSession = false;
         }
@@ -1973,6 +1990,7 @@ namespace XIVAICompanion
             {
                 Log.Info("Persona configuration changed. Resetting conversation history.");
                 InitializeConversation();
+                PrintSystemMessage($"{_aiNameBuffer}>> Persona settings were changed. Conversation history has been cleared.");
 
                 if (oldPersonaState.Name != configuration.AIName)
                 {
