@@ -12,7 +12,6 @@ using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 using ECommons;
 using ECommons.Automation;
-using ECommons.EzEventManager;
 using ImGuiNET;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -557,7 +556,7 @@ namespace XIVAICompanion
 
         private void ProcessPrompt(string rawPrompt, string? historyOverride = null)
         {
-            string currentPrompt = rawPrompt.Trim();
+            string currentPrompt = rawPrompt.Replace('　', ' ').Trim();
 
             bool isOoc = currentPrompt.StartsWith("ooc ", StringComparison.OrdinalIgnoreCase);
             if (isOoc) currentPrompt = currentPrompt.Substring(4).Trim();
@@ -1092,7 +1091,7 @@ namespace XIVAICompanion
 
                 if (ImGui.IsItemDeactivatedAfterEdit())
                 {
-                    InitializeConversation();                    
+                    InitializeConversation();
                 }
 
                 ImGui.SameLine();
