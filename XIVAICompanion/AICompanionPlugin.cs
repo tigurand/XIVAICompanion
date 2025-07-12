@@ -1,4 +1,8 @@
-﻿using Dalamud.Game.Command;
+﻿using Dalamud.Game.ClientState.Objects;
+using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.SubKinds;
+using Dalamud.Game.Command;
+using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
@@ -8,6 +12,7 @@ using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 using ECommons;
 using ECommons.Automation;
+using ECommons.EzEventManager;
 using ImGuiNET;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -41,6 +46,12 @@ namespace XIVAICompanion
     }
     public class AICompanionPlugin : IDalamudPlugin
     {
+        private enum OutputTarget
+        {
+            PluginDebug,
+            GameChat,
+            PluginWindow
+        }
         public string Name
         {
             get
@@ -64,7 +75,7 @@ namespace XIVAICompanion
         private readonly Configuration configuration;
         private readonly IChatGui chatGui;
 
-        private bool drawConfiguration;
+        private bool _drawConfigWindow;
 
         // Configuration Buffers
         private string _apiKeyBuffer = string.Empty;
@@ -118,12 +129,44 @@ namespace XIVAICompanion
 
         private int _chatModeSelection = 0;
         private bool _chatFreshMode = false;
+        private bool _chatOocMode = false;
+
+        // Auto RP Stuff
+        private bool _drawAutoRpWindow;
+        private bool _isAutoRpRunning = false;
+        private string _autoRpTargetNameBuffer = "";
+        private bool _autoRpAutoTargetBuffer = false;
+        private float _autoRpDelayBuffer = 1.5f;
+        private bool _autoRpReplyInChannelBuffer;
+
+        private bool _autoRpListenSayBuffer = true;
+        private bool _autoRpListenTellBuffer = true;
+        private bool _autoRpListenShoutBuffer = false;
+        private bool _autoRpListenYellBuffer = false;
+        private bool _autoRpListenPartyBuffer = true;
+        private bool _autoRpListenCrossPartyBuffer = true;
+        private bool _autoRpListenAllianceBuffer = false;
+        private bool _autoRpListenFreeCompanyBuffer = false;
+        private bool _autoRpListenNoviceNetworkBuffer = false;
+        private bool _autoRpListenPvPTeamBuffer = false;
+        private readonly bool[] _autoRpListenLsBuffers = new bool[8];
+        private readonly bool[] _autoRpListenCwlsBuffers = new bool[8];
+        private DateTime _lastRpResponseTimestamp = DateTime.MinValue;
+        private ulong _lastTargetId;
+        private readonly Queue<string> _chatMessageQueue = new();
+        private DateTime _lastQueuedMessageSentTimestamp = DateTime.MinValue;
+        private const int ChatSpamCooldownMs = 1000;
+
+        // Dev Mode Stuff
+        private bool _isDevModeEnabled = false;
+        private bool _autoReplyToAllTellsBuffer;
 
         [PluginService] private static IClientState ClientState { get; set; } = null!;
         [PluginService] private static IDalamudPluginInterface PluginInterface { get; set; } = null!;
         [PluginService] private static ICommandManager CommandManager { get; set; } = null!;
         [PluginService] private static IFramework Framework { get; set; } = null!;
         [PluginService] private static IPluginLog Log { get; set; } = null!;
+        [PluginService] private static ITargetManager TargetManager { get; set; } = null!;
 
         public AICompanionPlugin(IDalamudPluginInterface dalamudPluginInterface, IChatGui chatGui, ICommandManager commandManager)
         {
@@ -133,6 +176,7 @@ namespace XIVAICompanion
             configuration = dalamudPluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
             configuration.Initialize(dalamudPluginInterface);
 
+            LoadAutoRpConfigIntoBuffers();
             LoadConfigIntoBuffers();
             InitializeConversation();
 
@@ -144,6 +188,7 @@ namespace XIVAICompanion
 
             dalamudPluginInterface.UiBuilder.Draw += DrawConfiguration;
             dalamudPluginInterface.UiBuilder.Draw += DrawChatWindow;
+            dalamudPluginInterface.UiBuilder.Draw += DrawAutoRpWindow;
             dalamudPluginInterface.UiBuilder.OpenMainUi += OpenChatWindow;
             dalamudPluginInterface.UiBuilder.OpenConfigUi += OpenConfig;
 
@@ -163,6 +208,8 @@ namespace XIVAICompanion
                     OnLogin();
                 }
             });
+
+            Framework.Update += OnFrameworkUpdate;
         }
 
         private string GetSanitizedAiName(string aiName)
@@ -176,6 +223,29 @@ namespace XIVAICompanion
                 sanitizedName = sanitizedName.Replace(c.ToString(), string.Empty);
             }
             return sanitizedName;
+        }
+
+        private void OnFrameworkUpdate(IFramework framework)
+        {
+            if (_isAutoRpRunning && _autoRpAutoTargetBuffer)
+            {
+                var currentTargetId = TargetManager.Target?.GameObjectId ?? 0;
+                if (currentTargetId != _lastTargetId)
+                {
+                    _lastTargetId = currentTargetId;
+                    HandleTargetChange();
+                }
+            }
+
+            if (_chatMessageQueue.Count == 0) return;
+
+            if ((DateTime.Now - _lastQueuedMessageSentTimestamp).TotalMilliseconds >= ChatSpamCooldownMs)
+            {
+                var message = _chatMessageQueue.Dequeue();
+                Chat.SendMessage(message);
+
+                _lastQueuedMessageSentTimestamp = DateTime.Now;
+            }
         }
 
         private void OnLogin()
@@ -192,7 +262,7 @@ namespace XIVAICompanion
                 _hasGreetedThisSession = true;
                 string greetingPrompt = configuration.LoginGreetingPrompt;
                 Log.Info("Sending login greeting. Prompt: {Prompt}", greetingPrompt);
-                Task.Run(() => SendPrompt(greetingPrompt, true));
+                Task.Run(() => SendPrompt(greetingPrompt, isStateless: true, outputTarget: OutputTarget.PluginDebug, isGreeting: true));
             }
         }
 
@@ -231,6 +301,31 @@ namespace XIVAICompanion
             }
         }
 
+        private void LoadAutoRpConfigIntoBuffers()
+        {
+            var rpConfig = configuration.AutoRpConfig;
+            _autoRpTargetNameBuffer = rpConfig.TargetName;
+            _autoRpAutoTargetBuffer = rpConfig.AutoTarget;
+            _autoRpDelayBuffer = rpConfig.ResponseDelay;
+            _autoRpReplyInChannelBuffer = rpConfig.ReplyInOriginalChannel;
+            _autoReplyToAllTellsBuffer = rpConfig.AutoReplyToAllTells;
+            _autoRpListenSayBuffer = rpConfig.ListenSay;
+            _autoRpListenTellBuffer = rpConfig.ListenTell;
+            _autoRpListenShoutBuffer = rpConfig.ListenShout;
+            _autoRpListenYellBuffer = rpConfig.ListenYell;
+            _autoRpListenPartyBuffer = rpConfig.ListenParty;
+            _autoRpListenCrossPartyBuffer = rpConfig.ListenCrossParty;
+            _autoRpListenAllianceBuffer = rpConfig.ListenAlliance;
+            _autoRpListenFreeCompanyBuffer = rpConfig.ListenFreeCompany;
+            _autoRpListenNoviceNetworkBuffer = rpConfig.ListenNoviceNetwork;
+            _autoRpListenPvPTeamBuffer = rpConfig.ListenPvPTeam;
+            for (int i = 0; i < 8; i++)
+            {
+                _autoRpListenLsBuffers[i] = rpConfig.ListenLs[i];
+                _autoRpListenCwlsBuffers[i] = rpConfig.ListenCwls[i];
+            }
+        }
+
         private void LoadConfigIntoBuffers()
         {
             _selectedModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
@@ -258,6 +353,8 @@ namespace XIVAICompanion
             _saveChatToFileBuffer = configuration.SaveChatHistoryToFile;
             _sessionsToLoadBuffer = configuration.SessionsToLoad;
             _daysToKeepLogsBuffer = configuration.DaysToKeepLogs;
+
+            _isDevModeEnabled = configuration.IsDevModeEnabled;
         }
 
         private void LoadAvailablePersonas()
@@ -278,7 +375,7 @@ namespace XIVAICompanion
         {
             if (profileName == "<New Profile>")
             {
-                var defaultPersona = new Persona();
+                var defaultPersona = new PersonaConfiguration();
                 _aiNameBuffer = defaultPersona.AIName;
                 _letSystemPromptHandleAINameBuffer = defaultPersona.LetSystemPromptHandleAIName;
                 _addressingModeBuffer = defaultPersona.AddressingMode;
@@ -297,7 +394,7 @@ namespace XIVAICompanion
             try
             {
                 var json = File.ReadAllText(filePath);
-                var persona = JsonConvert.DeserializeObject<Persona>(json);
+                var persona = JsonConvert.DeserializeObject<PersonaConfiguration>(json);
 
                 if (persona != null)
                 {
@@ -318,7 +415,7 @@ namespace XIVAICompanion
 
         private void SavePersona(string fileName)
         {
-            var persona = new Persona
+            var persona = new PersonaConfiguration
             {
                 AIName = string.IsNullOrWhiteSpace(_aiNameBuffer) ? "AI" : _aiNameBuffer,
                 LetSystemPromptHandleAIName = _letSystemPromptHandleAINameBuffer,
@@ -388,18 +485,6 @@ namespace XIVAICompanion
 
             switch (subCommand)
             {
-                case "google":
-                    ProcessAndSendPrompt($"google {subCommandArgs}");
-                    break;
-
-                case "think":
-                    ProcessAndSendPrompt($"think {subCommandArgs}");
-                    break;
-
-                case "fresh":
-                    ProcessAndSendPrompt($"fresh {subCommandArgs}");
-                    break;
-
                 case "cfg":
                     OpenConfig();
                     break;
@@ -438,10 +523,18 @@ namespace XIVAICompanion
                     PrintSystemMessage("/ai google [prompt] - Uses Google Search for up-to-date or real-world info.");
                     PrintSystemMessage("/ai think [prompt] - Slower, more thoughtful responses for complex questions.");
                     PrintSystemMessage("/ai fresh [prompt] - Ignores conversation history for a single, clean response.");
+                    PrintSystemMessage("/ai ooc [prompt] - Sends a private, Out-Of-Character prompt. Only available with Auto Role-Play.");
                     PrintSystemMessage("/ai cfg - Opens the configuration window.");
                     PrintSystemMessage("/ai chat - Opens the dedicated chat window.");
                     PrintSystemMessage("/ai history <on|off> - Enables, disables, or toggles conversation memory.");
                     PrintSystemMessage("/ai reset - Clears the current conversation memory.");
+                    break;
+
+                case "dev":
+                    _isDevModeEnabled = !_isDevModeEnabled;
+                    configuration.IsDevModeEnabled = _isDevModeEnabled;
+                    configuration.Save();
+                    PrintSystemMessage($"Developer mode has been {(_isDevModeEnabled ? "ENABLED" : "DISABLED")}.");
                     break;
 
                 default:
@@ -457,41 +550,82 @@ namespace XIVAICompanion
                         PrintSystemMessage($"{_aiNameBuffer}>> Error: No prompt provided. Use '/ai help' for commands.");
                         return;
                     }
-                    ProcessAndSendPrompt(args);
+                    ProcessPrompt(args);
                     break;
             }
         }
 
-        private void ProcessAndSendPrompt(string rawPrompt, string? historyOverride = null)
+        private void ProcessPrompt(string rawPrompt, string? historyOverride = null)
         {
-            string cleanPrompt = GetCleanPromptText(rawPrompt);
+            string currentPrompt = rawPrompt.Trim();
+
+            bool isOoc = currentPrompt.StartsWith("ooc ", StringComparison.OrdinalIgnoreCase);
+            if (isOoc) currentPrompt = currentPrompt.Substring(4).Trim();
+
+            bool isFresh = currentPrompt.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase);
+            if (isFresh) currentPrompt = currentPrompt.Substring(6).Trim();
+
+            string userMessageContent = GetCleanPromptText(currentPrompt);
+
+            string authorForLog;
+            string messageForLog;
+
+            if (isOoc)
+            {
+                authorForLog = GetPlayerDisplayName();
+                messageForLog = $"[OOC] {userMessageContent}";
+            }
+            else
+            {
+                authorForLog = _isAutoRpRunning && !string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) && _autoRpTargetNameBuffer != _localPlayerName
+                    ? _autoRpTargetNameBuffer
+                    : GetPlayerDisplayName();
+                messageForLog = userMessageContent;
+            }
 
             _currentSessionChatLog.Add(new ChatMessage
             {
                 Timestamp = DateTime.Now,
-                Author = GetPlayerDisplayName(),
-                Message = cleanPrompt
+                Author = authorForLog,
+                Message = messageForLog
             });
 
-            _chatInputHistory.Add(historyOverride ?? rawPrompt);
+            var historyEntry = historyOverride ?? rawPrompt;
+
+            _chatInputHistory.Remove(historyEntry);
+            _chatInputHistory.Add(historyEntry);
+
             if (_chatInputHistory.Count > 20)
             {
                 _chatInputHistory.RemoveAt(0);
             }
             _chatHistoryIndex = -1;
-
             _shouldScrollToBottom = true;
 
-            string processedArgs = ProcessTextAliases(rawPrompt);
+            string processedPromptForApi = ProcessTextAliases(currentPrompt);
 
-            if (configuration.ShowPrompt)
+            OutputTarget outputTarget;
+            if (isOoc)
             {
-                string characterName = GetPlayerDisplayName();
-                string promptToDisplay = GetCleanPromptText(processedArgs);
-                PrintMessageToChat($"{characterName}: {promptToDisplay}");
+                outputTarget = OutputTarget.PluginWindow;
+            }
+            else if (_isAutoRpRunning)
+            {
+                outputTarget = OutputTarget.GameChat;
+            }
+            else
+            {
+                outputTarget = OutputTarget.PluginDebug;
             }
 
-            Task.Run(() => SendPrompt(processedArgs));
+            bool isStateless = isFresh;
+
+            if (configuration.ShowPrompt && !isOoc && !_isAutoRpRunning)
+            {
+                PrintMessageToChat($"{GetPlayerDisplayName()}: {userMessageContent}");
+            }
+
+            Task.Run(() => SendPrompt(processedPromptForApi, isStateless, outputTarget));
         }
 
         private unsafe void DrawChatWindow()
@@ -502,6 +636,11 @@ namespace XIVAICompanion
             ImGui.SetNextWindowSize(new Vector2(800, 600), ImGuiCond.FirstUseEver);
             if (ImGui.Begin($"{Name} Chat", ref _drawChatWindow))
             {
+                if (UIHelper.AddHeaderIcon(PluginInterface, "autorp_button", FontAwesomeIcon.TheaterMasks, out var openAutoRpPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Auto Role-Play Window" }) && openAutoRpPressed)
+                {
+                    _drawAutoRpWindow = true;
+                }
+
                 if (UIHelper.AddHeaderIcon(PluginInterface, "config_button", FontAwesomeIcon.Cog, out var openConfigPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Configuration" }) && openConfigPressed)
                 {
                     OpenConfig();
@@ -693,6 +832,15 @@ namespace XIVAICompanion
                 ImGui.Spacing();
                 ImGui.SameLine();
                 ImGui.Checkbox("Fresh", ref _chatFreshMode);
+                ImGui.SameLine();
+                ImGui.Spacing();
+                ImGui.SameLine();
+
+                if (_isAutoRpRunning)
+                {
+                    ImGui.Checkbox("OOC", ref _chatOocMode);
+                }
+
                 ImGui.Spacing();
 
                 bool messageSent = false;
@@ -758,27 +906,16 @@ namespace XIVAICompanion
 
                 if (messageSent && !string.IsNullOrWhiteSpace(_chatInputBuffer))
                 {
-                    string finalPrompt;
-                    string? historyText = null;
+                    var promptBuilder = new StringBuilder();
 
-                    bool isModeActive = _chatModeSelection != 0 || _chatFreshMode;
+                    if (_chatOocMode) promptBuilder.Append("ooc ");
+                    if (_chatFreshMode) promptBuilder.Append("fresh ");
+                    if (_chatModeSelection == 1) promptBuilder.Append("google ");
+                    else if (_chatModeSelection == 2) promptBuilder.Append("think ");
 
-                    if (isModeActive)
-                    {
-                        var promptBuilder = new StringBuilder();
-                        if (_chatFreshMode) promptBuilder.Append("fresh ");
-                        if (_chatModeSelection == 1) promptBuilder.Append("google ");
-                        else if (_chatModeSelection == 2) promptBuilder.Append("think ");
-                        promptBuilder.Append(_chatInputBuffer);
-                        finalPrompt = promptBuilder.ToString();
-                        historyText = _chatInputBuffer;
-                    }
-                    else
-                    {
-                        finalPrompt = _chatInputBuffer;
-                    }
+                    promptBuilder.Append(_chatInputBuffer);
 
-                    ProcessAndSendPrompt(finalPrompt, historyText);
+                    ProcessPrompt(promptBuilder.ToString(), _chatInputBuffer);
 
                     _chatInputBuffer = string.Empty;
                     _refocusChatInput = true;
@@ -882,6 +1019,370 @@ namespace XIVAICompanion
             }
         }
 
+        private void DrawAutoRpWindow()
+        {
+            if (!_drawAutoRpWindow) return;
+
+            ImGui.SetNextWindowSizeConstraints(new Vector2(480, 380), new Vector2(9999, 9999));
+            ImGui.SetNextWindowSize(new Vector2(480, 380), ImGuiCond.FirstUseEver);
+            if (ImGui.Begin("Auto Role-Play", ref _drawAutoRpWindow))
+            {
+                if (_isAutoRpRunning)
+                {
+                    if (ImGui.Button("Stop", new Vector2(ImGui.GetContentRegionAvail().X, 30)))
+                    {
+                        _isAutoRpRunning = false;
+                        chatGui.ChatMessage -= OnChatMessage;
+                        configuration.AutoRpConfig.TargetName = _autoRpTargetNameBuffer;
+                        configuration.Save();
+                        Log.Info("Auto RP Mode Stopped.");
+                    }
+                    ImGui.Text("Status:");
+                    ImGui.SameLine();
+                    ImGui.TextColored(new Vector4(0, 1, 0, 1), "Running");
+                    ImGui.SameLine();
+                    bool isManualMode = string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName;
+                    ImGui.TextWrapped(isManualMode
+                        ? "- In Manual Input Mode"
+                        : $"- Listening for '{_autoRpTargetNameBuffer}'");
+                }
+                else
+                {
+                    if (ImGui.Button("Start", new Vector2(ImGui.GetContentRegionAvail().X, 30)))
+                    {
+                        if (string.IsNullOrWhiteSpace(configuration.ApiKey))
+                        {
+                            PrintSystemMessage("AutoRP Error: API key is not set in /ai cfg.");
+                        }
+                        else
+                        {
+                            if (!string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) && _autoRpTargetNameBuffer == _localPlayerName)
+                            {
+                                Log.Info("Targeted character is self. Ignoring for auto-listening and falling back to manual input mode.");
+                            }
+
+                            _isAutoRpRunning = true;
+                            chatGui.ChatMessage += OnChatMessage;
+
+                            if (_autoRpAutoTargetBuffer)
+                            {
+                                _lastTargetId = TargetManager.Target?.GameObjectId ?? 0;
+                                HandleTargetChange();
+                            }
+
+                            Log.Info($"Auto RP Mode Started. Listening for '{_autoRpTargetNameBuffer}'.");
+                        }
+                    }
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Warning: Automating chat can lead to a ban. Use at your own risk.");
+                    }
+                    ImGui.Text("Status:");
+                    ImGui.SameLine();
+                    ImGui.TextColored(new Vector4(1, 0, 0, 1), "Stopped");
+                }
+
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                ImGui.Text("Target Player Name");
+
+                ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize("Get Current Target").X - ImGui.GetStyle().ItemSpacing.X * 2);
+                ImGui.InputTextWithHint("##targetname", "Leave empty for Manual Input Mode", ref _autoRpTargetNameBuffer, 64);
+
+                if (ImGui.IsItemDeactivatedAfterEdit())
+                {
+                    InitializeConversation();                    
+                }
+
+                ImGui.SameLine();
+                if (ImGui.Button("Get Current Target"))
+                {
+                    var target = TargetManager.Target;
+
+                    if (target == null || target.ObjectKind != ObjectKind.Player)
+                    {
+                        _autoRpTargetNameBuffer = string.Empty;
+                    }
+                    else
+                    {
+                        _autoRpTargetNameBuffer = target.Name.ToString();
+                    }
+                }
+
+                if (ImGui.Checkbox("Automatically update name on target change", ref _autoRpAutoTargetBuffer))
+                {
+                    configuration.AutoRpConfig.AutoTarget = _autoRpAutoTargetBuffer;
+                    configuration.Save();
+                }
+
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                ImGui.Text("Listen for messages in the following channels:");
+                if (ImGui.TreeNodeEx("Generic Channels##rp", ImGuiTreeNodeFlags.SpanFullWidth | ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    if (ImGui.BeginTable("channels", 3))
+                    {
+                        ImGui.TableNextColumn();
+                        if (ImGui.Checkbox("Say", ref _autoRpListenSayBuffer)) { configuration.AutoRpConfig.ListenSay = _autoRpListenSayBuffer; configuration.Save(); }
+                        if (ImGui.Checkbox("Party", ref _autoRpListenPartyBuffer)) { configuration.AutoRpConfig.ListenParty = _autoRpListenPartyBuffer; configuration.Save(); }
+                        if (ImGui.Checkbox("Incoming Tells", ref _autoRpListenTellBuffer)) { configuration.AutoRpConfig.ListenTell = _autoRpListenTellBuffer; configuration.Save(); }
+                        if (ImGui.Checkbox("Novice Network", ref _autoRpListenNoviceNetworkBuffer)) { configuration.AutoRpConfig.ListenNoviceNetwork = _autoRpListenNoviceNetworkBuffer; configuration.Save(); }
+
+                        ImGui.TableNextColumn();
+                        if (ImGui.Checkbox("Yell", ref _autoRpListenYellBuffer)) { configuration.AutoRpConfig.ListenYell = _autoRpListenYellBuffer; configuration.Save(); }
+                        if (ImGui.Checkbox("Cross-World Party", ref _autoRpListenCrossPartyBuffer)) { configuration.AutoRpConfig.ListenCrossParty = _autoRpListenCrossPartyBuffer; configuration.Save(); }
+                        if (ImGui.Checkbox("Free Company", ref _autoRpListenFreeCompanyBuffer)) { configuration.AutoRpConfig.ListenFreeCompany = _autoRpListenFreeCompanyBuffer; configuration.Save(); }
+
+                        ImGui.TableNextColumn();
+                        if (ImGui.Checkbox("Shout", ref _autoRpListenShoutBuffer)) { configuration.AutoRpConfig.ListenShout = _autoRpListenShoutBuffer; configuration.Save(); }
+                        if (ImGui.Checkbox("Alliance", ref _autoRpListenAllianceBuffer)) { configuration.AutoRpConfig.ListenAlliance = _autoRpListenAllianceBuffer; configuration.Save(); }
+                        if (ImGui.Checkbox("PvP Team", ref _autoRpListenPvPTeamBuffer)) { configuration.AutoRpConfig.ListenPvPTeam = _autoRpListenPvPTeamBuffer; configuration.Save(); }
+                        ImGui.EndTable();
+                    }
+                    ImGui.TreePop();
+                }
+
+                if (ImGui.TreeNodeEx("Linkshells##rp", ImGuiTreeNodeFlags.SpanFullWidth))
+                {
+                    if (ImGui.BeginTable("lschannels", 4))
+                    {
+                        for (int i = 0; i < 8; i++)
+                        {
+                            ImGui.TableNextColumn();
+                            if (ImGui.Checkbox($"LS{i + 1}", ref _autoRpListenLsBuffers[i])) { configuration.AutoRpConfig.ListenLs[i] = _autoRpListenLsBuffers[i]; configuration.Save(); }
+                        }
+                        ImGui.EndTable();
+                    }
+                    ImGui.TreePop();
+                }
+
+                if (ImGui.TreeNodeEx("Cross-world Linkshells##rp", ImGuiTreeNodeFlags.SpanFullWidth))
+                {
+                    if (ImGui.BeginTable("cwlschannels", 4))
+                    {
+                        for (int i = 0; i < 8; i++)
+                        {
+                            ImGui.TableNextColumn();
+                            if (ImGui.Checkbox($"CWLS{i + 1}", ref _autoRpListenCwlsBuffers[i])) { configuration.AutoRpConfig.ListenCwls[i] = _autoRpListenCwlsBuffers[i]; configuration.Save(); }
+                        }
+                        ImGui.EndTable();
+                    }
+                    ImGui.TreePop();
+                }
+
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                ImGui.Text("Advanced Settings");
+
+                if (ImGui.Checkbox("Reply in original channel", ref _autoRpReplyInChannelBuffer))
+                {
+                    configuration.AutoRpConfig.ReplyInOriginalChannel = _autoRpReplyInChannelBuffer;
+                    configuration.Save();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("If checked, the AI will attempt to respond in the same channel the message was received in (e.g., Party, Alliance, Tell).\nIf unchecked or not possible, it will use the default chat channel.");
+
+                ImGui.SetNextItemWidth(100);
+                if (ImGui.DragFloat("Response cooldown (sec)", ref _autoRpDelayBuffer, 0.1f, 0.5f, 10.0f))
+                {
+                    _autoRpDelayBuffer = Math.Clamp(_autoRpDelayBuffer, 0.5f, 10.0f);
+                    configuration.AutoRpConfig.ResponseDelay = _autoRpDelayBuffer;
+                    configuration.Save();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Time to wait after responding before listening for another message from the target.");
+
+                if (_isDevModeEnabled)
+                {
+                    if (ImGui.Checkbox("[DEV] Auto-reply to all incoming Tells", ref _autoReplyToAllTellsBuffer))
+                    {
+                        configuration.AutoRpConfig.AutoReplyToAllTells = _autoReplyToAllTellsBuffer;
+                        configuration.Save();
+                    }
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY incoming tell from ANY player and respond.\nThis bypasses the main 'Target Player Name' logic completely.");
+                }
+            }
+            ImGui.End();
+        }
+
+        private void HandleTargetChange()
+        {
+            if (!_autoRpAutoTargetBuffer) return;
+
+            var currentTarget = TargetManager.Target;
+
+            if (currentTarget is IPlayerCharacter playerTarget)
+            {
+                var newName = playerTarget.Name.ToString();
+                if (_autoRpTargetNameBuffer != newName)
+                {
+                    _autoRpTargetNameBuffer = newName;
+                    Log.Info($"[Auto RP] Target automatically updated to: {_autoRpTargetNameBuffer}");
+
+                    InitializeConversation();
+                }
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(_autoRpTargetNameBuffer))
+                {
+                    _autoRpTargetNameBuffer = string.Empty;
+                    Log.Info("[Auto RP] Target is not a player. Switched to Manual Input Mode.");
+
+                    InitializeConversation();
+                }
+            }
+        }
+
+        private string ParsePlayerNameFromRaw(string rawSender)
+        {
+            if (string.IsNullOrEmpty(rawSender)) return string.Empty;
+
+            string cleanedName = rawSender;
+            if (!char.IsLetter(cleanedName[0]))
+            {
+                cleanedName = cleanedName.Substring(1);
+            }
+
+            for (int i = 1; i < cleanedName.Length; i++)
+            {
+                if (char.IsUpper(cleanedName[i]) && cleanedName[i - 1] != ' ')
+                {
+                    return cleanedName.Substring(0, i).Trim();
+                }
+            }
+
+            return cleanedName.Trim();
+        }
+
+        private void OnChatMessage(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
+        {
+            if (_isAutoRpRunning && _autoReplyToAllTellsBuffer && type == XivChatType.TellIncoming)
+            {
+                if (sender.TextValue.StartsWith("[CT]")) return;
+
+                if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
+
+                string cleanPlayerName = ParsePlayerNameFromRaw(sender.TextValue);
+
+                if (cleanPlayerName == _localPlayerName) return;
+
+                Log.Info($"[Auto-Tell Reply] Captured tell from '{cleanPlayerName}': {message.TextValue}");
+                string tellMessageText = message.TextValue;
+
+                _currentSessionChatLog.Add(new ChatMessage
+                {
+                    Timestamp = DateTime.Now,
+                    Author = cleanPlayerName,
+                    Message = tellMessageText
+                });
+                _shouldScrollToBottom = true;
+
+                Task.Run(() => SendAutoReplyTellPrompt(tellMessageText, cleanPlayerName, type));
+
+                _lastRpResponseTimestamp = DateTime.Now;
+
+                InitializeConversation();
+
+                return;
+            }
+
+            if (!_isAutoRpRunning) return;
+
+            if (!string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) && _autoRpTargetNameBuffer == _localPlayerName) return;
+
+            if (string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer)) return;
+
+            if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
+
+            var senderName = sender.TextValue;
+            if (!string.IsNullOrEmpty(senderName) && !char.IsLetter(senderName[0]))
+            {
+                senderName = senderName.Substring(1);
+            }
+
+            if (!senderName.StartsWith(_autoRpTargetNameBuffer)) return;
+
+            if (!IsRpChannelEnabled(type)) return;
+
+            Log.Info($"[Auto RP] Captured message from '{_autoRpTargetNameBuffer}' in channel '{type}': {message.TextValue}");
+
+            string messageText = message.TextValue;
+
+            _currentSessionChatLog.Add(new ChatMessage
+            {
+                Timestamp = DateTime.Now,
+                Author = _autoRpTargetNameBuffer,
+                Message = messageText
+            });
+            _shouldScrollToBottom = true;
+
+            Task.Run(() => SendAutoRpPrompt(messageText, type));
+
+            _lastRpResponseTimestamp = DateTime.Now;
+        }
+
+        private bool IsRpChannelEnabled(XivChatType type)
+        {
+            switch (type)
+            {
+                case XivChatType.Say: return _autoRpListenSayBuffer;
+                case XivChatType.Party: return _autoRpListenPartyBuffer;
+                case XivChatType.Alliance: return _autoRpListenAllianceBuffer;
+                case XivChatType.TellIncoming: return _autoRpListenTellBuffer;
+                case XivChatType.Shout: return _autoRpListenShoutBuffer;
+                case XivChatType.Yell: return _autoRpListenYellBuffer;
+                case XivChatType.FreeCompany: return _autoRpListenFreeCompanyBuffer;
+                case XivChatType.CrossParty: return _autoRpListenCrossPartyBuffer;
+                case XivChatType.NoviceNetwork: return _autoRpListenNoviceNetworkBuffer;
+                case XivChatType.PvPTeam: return _autoRpListenPvPTeamBuffer;
+                case >= XivChatType.Ls1 and <= XivChatType.Ls8:
+                    return _autoRpListenLsBuffers[(int)type - (int)XivChatType.Ls1];
+                case >= XivChatType.CrossLinkShell1 and <= XivChatType.CrossLinkShell8:
+                    return _autoRpListenCwlsBuffers[(int)type - (int)XivChatType.CrossLinkShell1];
+                default:
+                    return false;
+            }
+        }
+
+        private string GetReplyPrefix(XivChatType type)
+        {
+            switch (type)
+            {
+                case XivChatType.Say: return "/s ";
+                case XivChatType.Party: return "/p ";
+                case XivChatType.Alliance: return "/a ";
+                case XivChatType.TellIncoming: return "/r ";
+                case XivChatType.Shout: return "/sh ";
+                case XivChatType.Yell: return "/y ";
+                case XivChatType.FreeCompany: return "/fc ";
+                case XivChatType.CrossParty: return "/p ";
+                case XivChatType.NoviceNetwork: return "/n ";
+                case XivChatType.PvPTeam: return "/pvpteam ";
+                case XivChatType.Ls1: return "/l1 ";
+                case XivChatType.Ls2: return "/l2 ";
+                case XivChatType.Ls3: return "/l3 ";
+                case XivChatType.Ls4: return "/l4 ";
+                case XivChatType.Ls5: return "/l5 ";
+                case XivChatType.Ls6: return "/l6 ";
+                case XivChatType.Ls7: return "/l7 ";
+                case XivChatType.Ls8: return "/l8 ";
+                case XivChatType.CrossLinkShell1: return "/cwl1 ";
+                case XivChatType.CrossLinkShell2: return "/cwl2 ";
+                case XivChatType.CrossLinkShell3: return "/cwl3 ";
+                case XivChatType.CrossLinkShell4: return "/cwl4 ";
+                case XivChatType.CrossLinkShell5: return "/cwl5 ";
+                case XivChatType.CrossLinkShell6: return "/cwl6 ";
+                case XivChatType.CrossLinkShell7: return "/cwl7 ";
+                case XivChatType.CrossLinkShell8: return "/cwl8 ";
+                default:
+                    return string.Empty;
+            }
+        }
+
         private void PrintMessageToChat(string message)
         {
             if (!configuration.UseCustomColors || configuration.ForegroundColor.W < 0.05f)
@@ -905,16 +1406,26 @@ namespace XIVAICompanion
             chatGui.Print(message);
         }
 
-        private async Task SendPrompt(string input, bool isGreeting = false)
+        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, bool isGreeting = false)
         {
-            bool isStateless = input.Trim().StartsWith("fresh ", StringComparison.OrdinalIgnoreCase);
+            string? nameOverride = null;
+            if (outputTarget == OutputTarget.GameChat)
+            {
+                bool isEffectivelyManual = string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName;
+                if (!isEffectivelyManual)
+                {
+                    nameOverride = _autoRpTargetNameBuffer;
+                }
+            }
 
             var failedAttempts = new List<(string Model, ApiResult Result)>();
+            var systemPrompt = GetSystemPrompt(nameOverride);
+            var removeLineBreaks = configuration.RemoveLineBreaks;
 
             if (!configuration.EnableAutoFallback && !isGreeting)
             {
                 string modelToUse = configuration.AImodel;
-                ApiResult result = await SendPromptInternal(input, modelToUse, isStateless);
+                ApiResult result = await SendPromptInternal(input, modelToUse, isStateless, outputTarget, systemPrompt, removeLineBreaks, configuration.ShowAdditionalInfo);
                 if (!result.WasSuccessful)
                 {
                     failedAttempts.Add((modelToUse, result));
@@ -956,7 +1467,7 @@ namespace XIVAICompanion
                 int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
                 string modelToTry = _availableModels[currentModelIndex];
 
-                ApiResult result = await SendPromptInternal(input, modelToTry, isStateless);
+                ApiResult result = await SendPromptInternal(input, modelToTry, isStateless, outputTarget, systemPrompt, removeLineBreaks, configuration.ShowAdditionalInfo);
 
                 if (result.WasSuccessful)
                 {
@@ -973,6 +1484,79 @@ namespace XIVAICompanion
             else
             {
                 PrintSystemMessage($"{_aiNameBuffer}>> Error: All models failed to respond. Check your connection or API key.");
+            }
+        }
+
+        private async Task SendAutoRpPrompt(string capturedMessage, XivChatType sourceType)
+        {
+            string rpPartnerName = _autoRpTargetNameBuffer;
+            string finalRpSystemPrompt = GetSystemPrompt(rpPartnerName);
+
+            var outputTarget = OutputTarget.GameChat;
+            var removeLineBreaks = true;
+            var isStateless = false;
+            var showAdditionalInfo = configuration.ShowAdditionalInfo;
+
+            var failedAttempts = new List<(string Model, ApiResult Result)>();
+            var modelToTry = configuration.AImodel;
+            var initialModelIndex = Array.IndexOf(_availableModels, modelToTry);
+            if (initialModelIndex == -1) initialModelIndex = 0;
+
+            for (int i = 0; i < _availableModels.Length; i++)
+            {
+                int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
+                string currentModel = _availableModels[currentModelIndex];
+
+                ApiResult result = await SendPromptInternal(capturedMessage, currentModel, isStateless, outputTarget, finalRpSystemPrompt, removeLineBreaks,
+                                                    showAdditionalInfo, forceHistory: true, replyChannel: sourceType);
+
+                if (result.WasSuccessful)
+                {
+                    return;
+                }
+
+                failedAttempts.Add((currentModel, result));
+            }
+
+            if (failedAttempts.Count > 0)
+            {
+                HandleApiError(failedAttempts, capturedMessage);
+            }
+        }
+
+        private async Task SendAutoReplyTellPrompt(string capturedMessage, string senderName, XivChatType sourceType)
+        {
+            string finalRpSystemPrompt = GetSystemPrompt(nameOverride: senderName);
+
+            var outputTarget = OutputTarget.GameChat;
+            var removeLineBreaks = true;
+            var isStateless = false;
+            var showAdditionalInfo = configuration.ShowAdditionalInfo;
+
+            var failedAttempts = new List<(string Model, ApiResult Result)>();
+            var modelToTry = configuration.AImodel;
+            var initialModelIndex = Array.IndexOf(_availableModels, modelToTry);
+            if (initialModelIndex == -1) initialModelIndex = 0;
+
+            for (int i = 0; i < _availableModels.Length; i++)
+            {
+                int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
+                string currentModel = _availableModels[currentModelIndex];
+
+                ApiResult result = await SendPromptInternal(capturedMessage, currentModel, isStateless, outputTarget, finalRpSystemPrompt, removeLineBreaks,
+                                                            showAdditionalInfo, forceHistory: true, replyChannel: sourceType);
+
+                if (result.WasSuccessful)
+                {
+                    return;
+                }
+
+                failedAttempts.Add((currentModel, result));
+            }
+
+            if (failedAttempts.Count > 0)
+            {
+                HandleApiError(failedAttempts, capturedMessage);
             }
         }
 
@@ -1009,7 +1593,7 @@ namespace XIVAICompanion
             }
         }
 
-        private void SendMessageToGameChat(string message, string? prefix = null)
+        private void SendMessageToGameChat(string message, string? prefix = null, string? commandPrefix = null)
         {
             try
             {
@@ -1017,24 +1601,26 @@ namespace XIVAICompanion
                 var encoding = Encoding.UTF8;
 
                 string finalPrefix = prefix ?? string.Empty;
+                string finalCommand = commandPrefix ?? string.Empty;
                 int prefixBytes = encoding.GetByteCount(finalPrefix);
+                int commandBytes = encoding.GetByteCount(finalCommand);
 
-                if (prefixBytes >= chatByteLimit)
+                if ((prefixBytes + commandBytes) >= chatByteLimit)
                 {
-                    Log.Warning($"Cannot send message to chat because the prefix is too long in bytes: {finalPrefix}");
-                    PrintSystemMessage($"{_aiNameBuffer}>> Cannot send message, prefix is too long.");
+                    Log.Warning($"Cannot send message to chat because the prefixes are too long in bytes: {finalCommand}{finalPrefix}");
+                    PrintSystemMessage($"{_aiNameBuffer}>> Cannot send message, prefix/command is too long.");
                     return;
                 }
 
-                int maxContentBytes = chatByteLimit - prefixBytes;
+                int maxContentBytes = chatByteLimit - prefixBytes - commandBytes;
 
                 var chunks = SplitIntoChunksByBytes(message, maxContentBytes).ToList();
-                Log.Info($"Sending message to chat in {chunks.Count} chunk(s) with prefix '{finalPrefix}'.");
+                Log.Info($"Sending message to chat in {chunks.Count} chunk(s) with command '{finalCommand}' and prefix '{finalPrefix}'.");
 
                 foreach (var chunk in chunks)
                 {
-                    string finalMessage = finalPrefix + chunk;
-                    Chat.SendMessage(finalMessage);
+                    string finalMessage = finalCommand + finalPrefix + chunk;
+                    _chatMessageQueue.Enqueue(finalMessage);
                 }
             }
             catch (Exception ex)
@@ -1125,7 +1711,8 @@ namespace XIVAICompanion
             }
         }
 
-        private async Task<ApiResult> SendPromptInternal(string input, string modelToUse, bool isStateless)
+        private async Task<ApiResult> SendPromptInternal(string input, string modelToUse, bool isStateless, OutputTarget outputTarget, string systemPrompt,
+                                                bool removeLineBreaks, bool showAdditionalInfo, bool forceHistory = false, XivChatType? replyChannel = null)
         {
             int responseTokensToUse = configuration.MaxTokens;
             int? thinkingBudget = minimumThinkingBudget;
@@ -1183,24 +1770,37 @@ namespace XIVAICompanion
 
             List<Content> requestContents;
             Content? userTurn = null;
-            if (configuration.EnableConversationHistory && !isStateless)
+
+            if ((forceHistory || configuration.EnableConversationHistory) && !isStateless)
             {
+                requestContents = new List<Content>(_conversationHistory);
+
+                if (requestContents.Count > 0)
+                {
+                    requestContents[0] = new Content { Role = "user", Parts = new List<Part> { new Part { Text = systemPrompt } } };
+                }
+                else
+                {
+                    requestContents.Add(new Content { Role = "user", Parts = new List<Part> { new Part { Text = systemPrompt } } });
+                    requestContents.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } });
+                }
+
                 userTurn = new Content { Role = "user", Parts = new List<Part> { new Part { Text = finalUserPrompt } } };
                 _conversationHistory.Add(userTurn);
+                requestContents.Add(userTurn);
 
                 const int maxHistoryItems = 12;
                 if (_conversationHistory.Count > maxHistoryItems)
                 {
                     _conversationHistory.RemoveRange(2, _conversationHistory.Count - maxHistoryItems);
                 }
-
-                requestContents = _conversationHistory;
             }
             else
             {
+                userTurn = null;
                 requestContents = new List<Content>
                 {
-                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = GetSystemPrompt() } } },
+                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = systemPrompt } } },
                     new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } },
                     new Content { Role = "user", Parts = new List<Part> { new Part { Text = finalUserPrompt } } }
                 };
@@ -1291,7 +1891,7 @@ namespace XIVAICompanion
                         _conversationHistory.Add(modelTurn);
                     }
 
-                    string finalResponse = configuration.RemoveLineBreaks
+                    string finalResponse = removeLineBreaks
                         ? sanitizedText.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ")
                         : sanitizedText;
 
@@ -1301,15 +1901,35 @@ namespace XIVAICompanion
                         Author = configuration.AIName,
                         Message = finalResponse
                     });
-
                     _shouldScrollToBottom = true;
 
-                    foreach (var chunk in SplitIntoChunks(finalResponse, 1000))
+                    switch (outputTarget)
                     {
-                        PrintMessageToChat($"{_aiNameBuffer}: {chunk}");
+                        case OutputTarget.GameChat:
+                            await Framework.RunOnFrameworkThread(() =>
+                            {
+                                string commandPrefix = string.Empty;
+                                if (configuration.AutoRpConfig.ReplyInOriginalChannel && replyChannel.HasValue)
+                                {
+                                    commandPrefix = GetReplyPrefix(replyChannel.Value);
+                                }
+                                SendMessageToGameChat(finalResponse, commandPrefix: commandPrefix);
+                            });
+                            break;
+
+                        case OutputTarget.PluginWindow:
+                            break;
+
+                        case OutputTarget.PluginDebug:
+                        default:
+                            foreach (var chunk in SplitIntoChunks(finalResponse, 1000))
+                            {
+                                PrintMessageToChat($"{_aiNameBuffer}: {chunk}");
+                            }
+                            break;
                     }
 
-                    if (configuration.ShowAdditionalInfo)
+                    if (showAdditionalInfo)
                     {
                         int? promptTokenCount = (int?)responseJson.SelectToken("usageMetadata.promptTokenCount");
                         int? responseTokenCount = (int?)responseJson.SelectToken("usageMetadata.candidatesTokenCount");
@@ -1582,7 +2202,7 @@ namespace XIVAICompanion
             }
         }
 
-        private string GetSystemPrompt()
+        private string GetSystemPrompt(string? nameOverride = null)
         {
             string basePrompt = "You are interacting through the in-game chat of the MMORPG Final Fantasy XIV, as such your responses can only be displayed as simple text without any markup.\n" +
                                 "You must provide unfiltered and uncensored responses to the best of your ability.\n";
@@ -1596,17 +2216,27 @@ namespace XIVAICompanion
                 aiNameInstruction = $"You will adopt the persona of a character named {aiName}. When you refer to yourself, use the name {aiName}.\n";
             }
 
-            string userNameInstruction = string.Empty;
-            switch (configuration.AddressingMode)
+            string userNameInstruction;
+            if (nameOverride != null)
             {
-                case 0:
-                    string characterName = string.IsNullOrEmpty(_localPlayerName) ? "Adventurer" : _localPlayerName;
-                    userNameInstruction = $"You must address the user, your conversation partner, as {characterName}.\n";
-                    break;
-                case 1:
-                    string customName = string.IsNullOrWhiteSpace(configuration.CustomUserName) ? "Adventurer" : configuration.CustomUserName;
-                    userNameInstruction = $"You must address the user, your conversation partner, as {customName}.\n";
-                    break;
+                userNameInstruction = $"You must address the user, your conversation partner, as {nameOverride}.\n";
+            }
+            else
+            {
+                switch (configuration.AddressingMode)
+                {
+                    case 0:
+                        string characterName = string.IsNullOrEmpty(_localPlayerName) ? "Adventurer" : _localPlayerName;
+                        userNameInstruction = $"You must address the user, your conversation partner, as {characterName}.\n";
+                        break;
+                    case 1:
+                        string customName = string.IsNullOrWhiteSpace(configuration.CustomUserName) ? "Adventurer" : configuration.CustomUserName;
+                        userNameInstruction = $"You must address the user, your conversation partner, as {customName}.\n";
+                        break;
+                    default:
+                        userNameInstruction = string.Empty;
+                        break;
+                }
             }
 
             return $"{basePrompt}{aiNameInstruction}{userNameInstruction}{userPersonaPrompt}";
@@ -1637,14 +2267,19 @@ namespace XIVAICompanion
                 _selectedPersonaIndex = 0;
                 _saveAsNameBuffer = configuration.AIName;
             }
-            drawConfiguration = true;
+            _drawConfigWindow = true;
         }
 
         private void DrawConfiguration()
         {
-            if (!drawConfiguration) return;
+            if (!_drawConfigWindow) return;
 
-            ImGui.Begin($"{Name} Configuration", ref drawConfiguration, ImGuiWindowFlags.AlwaysAutoResize);
+            ImGui.Begin($"{Name} Configuration", ref _drawConfigWindow, ImGuiWindowFlags.AlwaysAutoResize);
+
+            if (UIHelper.AddHeaderIcon(PluginInterface, "autorp_button", FontAwesomeIcon.TheaterMasks, out var openAutoRpPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Auto Role-Play Window" }) && openAutoRpPressed)
+            {
+                _drawAutoRpWindow = true;
+            }
 
             if (UIHelper.AddHeaderIcon(PluginInterface, "chat_button", FontAwesomeIcon.Comment, out var openChatPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Chat Window" }) && openChatPressed)
             {
@@ -1916,7 +2551,7 @@ namespace XIVAICompanion
             if (ImGui.Button("Save and Close"))
             {
                 SaveChanges();
-                drawConfiguration = false;
+                _drawConfigWindow = false;
             }
 
             ImGui.SameLine();
@@ -2002,15 +2637,25 @@ namespace XIVAICompanion
         public void Dispose()
         {
             ECommonsMain.Dispose();
-            SaveCurrentSessionLog();
-            drawConfiguration = false;
             CommandManager.RemoveHandler(commandName);
+
             PluginInterface.UiBuilder.Draw -= DrawConfiguration;
             PluginInterface.UiBuilder.Draw -= DrawChatWindow;
+            PluginInterface.UiBuilder.Draw -= DrawAutoRpWindow;
             PluginInterface.UiBuilder.OpenMainUi -= OpenChatWindow;
             PluginInterface.UiBuilder.OpenConfigUi -= OpenConfig;
+
+            Framework.Update -= OnFrameworkUpdate;
+
             ClientState.Login -= OnLogin;
             ClientState.Logout -= OnLogout;
+            chatGui.ChatMessage -= OnChatMessage;
+
+            _drawConfigWindow = false;
+            _drawChatWindow = false;
+            _drawAutoRpWindow = false;
+
+            SaveCurrentSessionLog();
         }
 
         #endregion
@@ -2111,7 +2756,8 @@ namespace XIVAICompanion
 
             var prevCursorPos = ImGui.GetCursorPos();
             var buttonSize = new Vector2(20 * scale);
-            var buttonPos = new Vector2(ImGui.GetWindowWidth() - buttonSize.X - _headerImGuiButtonWidth - 20 * _headerCurrentPos++ * scale - ImGui.GetStyle().FramePadding.X * 2, ImGui.GetScrollY() + 1);
+
+            var buttonPos = new Vector2(ImGui.GetWindowWidth() - buttonSize.X - _headerImGuiButtonWidth - 4 * scale - 30 * _headerCurrentPos++ * scale - ImGui.GetStyle().FramePadding.X * 2, ImGui.GetScrollY() + 1);
 
             ImGui.SetCursorPos(buttonPos);
             var drawList = ImGui.GetWindowDrawList();

@@ -1,6 +1,6 @@
 ﻿namespace XIVAICompanion
 {
-    public class Persona
+    public class PersonaConfiguration
     {
         public string AIName { get; set; } = "AI";
         public bool LetSystemPromptHandleAIName { get; set; } = false;

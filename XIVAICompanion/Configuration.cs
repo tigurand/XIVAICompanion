@@ -38,6 +38,11 @@ namespace XIVAICompanion
         public int SessionsToLoad { get; set; } = 1;
         public int DaysToKeepLogs { get; set; } = 30;
 
+        //Auto RP Settings
+        public AutoRpConfiguration AutoRpConfig { get; set; } = new();
+
+        public bool IsDevModeEnabled { get; set; } = false;
+
         private IDalamudPluginInterface pluginInterface = null!;
 
         public void Initialize(IDalamudPluginInterface pInterface)

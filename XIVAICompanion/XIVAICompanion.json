@@ -1,7 +1,7 @@
 {
   "Author": "Lucille",
   "Name": "XIV AI Companion",
-  "Description": "An AI companion for FFXIV, accessible through the in-game chat. Configuration requires Google AI API key.",
+  "Description": "An AI companion for FFXIV, accessible through the in-game chat. Configuration requires Google AI API key.\nWarning: Avoid sharing sensitive, confidential, or personal info with this AI, especially if you are using the free tier API.",
   "Punchline": "If you're a loner like me, you probably want a personal AI companion.",
   "InternalName": "XIVAICompanion",
   "Tags": ["chat", "ai"],
