@@ -135,6 +135,7 @@ namespace XIVAICompanion
         private bool _isAutoRpRunning = false;
         private string _autoRpTargetNameBuffer = "";
         private bool _autoRpAutoTargetBuffer = false;
+        private float _autoRpInitialDelayBuffer;
         private float _autoRpDelayBuffer = 1.5f;
         private bool _autoRpReplyInChannelBuffer;
 
@@ -154,7 +155,6 @@ namespace XIVAICompanion
         private ulong _lastTargetId;
         private readonly Queue<string> _chatMessageQueue = new();
         private DateTime _lastQueuedMessageSentTimestamp = DateTime.MinValue;
-        private const int ChatSpamCooldownMs = 1000;
 
         // Dev Mode Stuff
         private bool _isDevModeEnabled = false;
@@ -238,7 +238,9 @@ namespace XIVAICompanion
 
             if (_chatMessageQueue.Count == 0) return;
 
-            if ((DateTime.Now - _lastQueuedMessageSentTimestamp).TotalMilliseconds >= ChatSpamCooldownMs)
+            var requiredChunkCooldownMs = Math.Max((int)(configuration.AutoRpConfig.InitialResponseDelaySeconds * 1000), 1000);
+
+            if ((DateTime.Now - _lastQueuedMessageSentTimestamp).TotalMilliseconds >= requiredChunkCooldownMs)
             {
                 var message = _chatMessageQueue.Dequeue();
                 Chat.SendMessage(message);
@@ -305,6 +307,7 @@ namespace XIVAICompanion
             var rpConfig = configuration.AutoRpConfig;
             _autoRpTargetNameBuffer = rpConfig.TargetName;
             _autoRpAutoTargetBuffer = rpConfig.AutoTarget;
+            _autoRpInitialDelayBuffer = rpConfig.InitialResponseDelaySeconds;
             _autoRpDelayBuffer = rpConfig.ResponseDelay;
             _autoRpReplyInChannelBuffer = rpConfig.ReplyInOriginalChannel;
             _autoReplyToAllTellsBuffer = rpConfig.AutoReplyToAllTells;
@@ -1022,8 +1025,8 @@ namespace XIVAICompanion
         {
             if (!_drawAutoRpWindow) return;
 
-            ImGui.SetNextWindowSizeConstraints(new Vector2(480, 380), new Vector2(9999, 9999));
-            ImGui.SetNextWindowSize(new Vector2(480, 380), ImGuiCond.FirstUseEver);
+            ImGui.SetNextWindowSizeConstraints(new Vector2(480, 410), new Vector2(9999, 9999));
+            ImGui.SetNextWindowSize(new Vector2(480, 410), ImGuiCond.FirstUseEver);
             if (ImGui.Begin("Auto Role-Play", ref _drawAutoRpWindow))
             {
                 if (_isAutoRpRunning)
@@ -1184,6 +1187,15 @@ namespace XIVAICompanion
                     configuration.Save();
                 }
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("If checked, the AI will attempt to respond in the same channel the message was received in (e.g., Party, Alliance, Tell).\nIf unchecked or not possible, it will use the default chat channel.");
+
+                ImGui.SetNextItemWidth(100);
+                if (ImGui.DragFloat("Initial reply delay (sec)", ref _autoRpInitialDelayBuffer, 0.1f, 0.0f, 10.0f))
+                {
+                    _autoRpInitialDelayBuffer = Math.Clamp(_autoRpInitialDelayBuffer, 0.0f, 10.0f);
+                    configuration.AutoRpConfig.InitialResponseDelaySeconds = _autoRpInitialDelayBuffer;
+                    configuration.Save();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Adds a 'thinking time' delay before the AI sends a reply to game chat to feel more human.\nSet to 0 to disable.");
 
                 ImGui.SetNextItemWidth(100);
                 if (ImGui.DragFloat("Response cooldown (sec)", ref _autoRpDelayBuffer, 0.1f, 0.5f, 10.0f))
@@ -1874,6 +1886,11 @@ namespace XIVAICompanion
 
                 if (text != null)
                 {
+                    if (outputTarget == OutputTarget.GameChat && configuration.AutoRpConfig.InitialResponseDelaySeconds > 0)
+                    {
+                        await Task.Delay((int)(configuration.AutoRpConfig.InitialResponseDelaySeconds * 1000));
+                    }
+
                     string sanitizedText = text;
 
                     int lastPromptIndex = text.LastIndexOf(finalUserPrompt, StringComparison.Ordinal);

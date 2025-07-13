@@ -10,6 +10,7 @@ namespace XIVAICompanion
         public float ResponseDelay { get; set; } = 1.5f;
         public bool ReplyInOriginalChannel { get; set; } = true;
         public bool AutoReplyToAllTells { get; set; } = false;
+        public float InitialResponseDelaySeconds { get; set; } = 1.5f;
 
         // Channels
         public bool ListenSay { get; set; } = true;
