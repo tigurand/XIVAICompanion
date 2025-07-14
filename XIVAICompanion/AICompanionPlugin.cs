@@ -159,6 +159,7 @@ namespace XIVAICompanion
         // Dev Mode Stuff
         private bool _isDevModeEnabled = false;
         private bool _autoReplyToAllTellsBuffer;
+        private bool _autoReplyToPartyBuffer;
 
         [PluginService] private static IClientState ClientState { get; set; } = null!;
         [PluginService] private static IDalamudPluginInterface PluginInterface { get; set; } = null!;
@@ -311,6 +312,7 @@ namespace XIVAICompanion
             _autoRpDelayBuffer = rpConfig.ResponseDelay;
             _autoRpReplyInChannelBuffer = rpConfig.ReplyInOriginalChannel;
             _autoReplyToAllTellsBuffer = rpConfig.AutoReplyToAllTells;
+            _autoReplyToPartyBuffer = rpConfig.AutoReplyToParty;
             _autoRpListenSayBuffer = rpConfig.ListenSay;
             _autoRpListenTellBuffer = rpConfig.ListenTell;
             _autoRpListenShoutBuffer = rpConfig.ListenShout;
@@ -1035,6 +1037,7 @@ namespace XIVAICompanion
                     {
                         _isAutoRpRunning = false;
                         chatGui.ChatMessage -= OnChatMessage;
+                        _chatOocMode = false;
                         configuration.AutoRpConfig.TargetName = _autoRpTargetNameBuffer;
                         configuration.Save();
                         Log.Info("Auto RP Mode Stopped.");
@@ -1213,7 +1216,14 @@ namespace XIVAICompanion
                         configuration.AutoRpConfig.AutoReplyToAllTells = _autoReplyToAllTellsBuffer;
                         configuration.Save();
                     }
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY incoming tell from ANY player and respond.\nThis bypasses the main 'Target Player Name' logic completely.");
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY incoming tell from ANY player and respond.\nThis bypasses the main 'Target Player Name' logic.");
+
+                    if (ImGui.Checkbox("[DEV] Auto-reply to Party chat", ref _autoReplyToPartyBuffer))
+                    {
+                        configuration.AutoRpConfig.AutoReplyToParty = _autoReplyToPartyBuffer;
+                        configuration.Save();
+                    }
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY message in party chat and respond.\nThis bypasses the main 'Target Player Name' logic.");
                 }
             }
             ImGui.End();
@@ -1271,42 +1281,36 @@ namespace XIVAICompanion
 
         private void OnChatMessage(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
         {
-            if (_isAutoRpRunning && _autoReplyToAllTellsBuffer && type == XivChatType.TellIncoming)
+            bool isTellReply = type == XivChatType.TellIncoming && _autoReplyToAllTellsBuffer;
+            bool isPartyReply = type == XivChatType.Party && _autoReplyToPartyBuffer;
+
+            if (_isAutoRpRunning && (isTellReply || isPartyReply))
             {
                 if (sender.TextValue.StartsWith("[CT]")) return;
-
                 if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
 
                 string cleanPlayerName = ParsePlayerNameFromRaw(sender.TextValue);
-
                 if (cleanPlayerName == _localPlayerName) return;
 
-                Log.Info($"[Auto-Tell Reply] Captured tell from '{cleanPlayerName}': {message.TextValue}");
-                string tellMessageText = message.TextValue;
+                string logPrefix = isTellReply ? "[Auto-Tell Reply]" : "[Auto-Party Reply]";
+                Log.Info($"{logPrefix} Captured message from '{cleanPlayerName}': {message.TextValue}");
 
-                _currentSessionChatLog.Add(new ChatMessage
-                {
-                    Timestamp = DateTime.Now,
-                    Author = cleanPlayerName,
-                    Message = tellMessageText
-                });
+                string messageText = message.TextValue;
+
+                _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = cleanPlayerName, Message = messageText });
                 _shouldScrollToBottom = true;
 
-                Task.Run(() => SendAutoReplyTellPrompt(tellMessageText, cleanPlayerName, type));
+                Task.Run(() => SendAutoReplyPrompt(messageText, cleanPlayerName, type));
 
                 _lastRpResponseTimestamp = DateTime.Now;
-
                 InitializeConversation();
 
                 return;
             }
 
             if (!_isAutoRpRunning) return;
-
             if (!string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) && _autoRpTargetNameBuffer == _localPlayerName) return;
-
             if (string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer)) return;
-
             if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
 
             var senderName = sender.TextValue;
@@ -1314,25 +1318,16 @@ namespace XIVAICompanion
             {
                 senderName = senderName.Substring(1);
             }
-
             if (!senderName.StartsWith(_autoRpTargetNameBuffer)) return;
-
             if (!IsRpChannelEnabled(type)) return;
 
             Log.Info($"[Auto RP] Captured message from '{_autoRpTargetNameBuffer}' in channel '{type}': {message.TextValue}");
+            string mainMessageText = message.TextValue;
 
-            string messageText = message.TextValue;
-
-            _currentSessionChatLog.Add(new ChatMessage
-            {
-                Timestamp = DateTime.Now,
-                Author = _autoRpTargetNameBuffer,
-                Message = messageText
-            });
+            _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = _autoRpTargetNameBuffer, Message = mainMessageText });
             _shouldScrollToBottom = true;
 
-            Task.Run(() => SendAutoRpPrompt(messageText, type));
-
+            Task.Run(() => SendAutoRpPrompt(mainMessageText, type));
             _lastRpResponseTimestamp = DateTime.Now;
         }
 
@@ -1535,7 +1530,7 @@ namespace XIVAICompanion
             }
         }
 
-        private async Task SendAutoReplyTellPrompt(string capturedMessage, string senderName, XivChatType sourceType)
+        private async Task SendAutoReplyPrompt(string capturedMessage, string senderName, XivChatType sourceType)
         {
             string finalRpSystemPrompt = GetSystemPrompt(nameOverride: senderName);
 
