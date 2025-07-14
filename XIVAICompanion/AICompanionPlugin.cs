@@ -1123,7 +1123,7 @@ namespace XIVAICompanion
                 ImGui.Spacing();
 
                 ImGui.Text("Listen for messages in the following channels:");
-                if (ImGui.TreeNodeEx("Generic Channels##rp", ImGuiTreeNodeFlags.SpanFullWidth | ImGuiTreeNodeFlags.DefaultOpen))
+                if (ImGui.TreeNodeEx("Generic Channels##rp", ImGuiTreeNodeFlags.SpanFullWidth))
                 {
                     if (ImGui.BeginTable("channels", 3))
                     {
