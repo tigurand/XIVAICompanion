@@ -159,7 +159,20 @@ namespace XIVAICompanion
         // Dev Mode Stuff
         private bool _isDevModeEnabled = false;
         private bool _autoReplyToAllTellsBuffer;
-        private bool _autoReplyToPartyBuffer;
+
+        private bool _openListenerModeBuffer;
+        private bool _openListenerListenSayBuffer;
+        private bool _openListenerListenTellBuffer;
+        private bool _openListenerListenShoutBuffer;
+        private bool _openListenerListenYellBuffer;
+        private bool _openListenerListenPartyBuffer;
+        private bool _openListenerListenCrossPartyBuffer;
+        private bool _openListenerListenAllianceBuffer;
+        private bool _openListenerListenFreeCompanyBuffer;
+        private bool _openListenerListenNoviceNetworkBuffer;
+        private bool _openListenerListenPvPTeamBuffer;
+        private readonly bool[] _openListenerListenLsBuffers = new bool[8];
+        private readonly bool[] _openListenerListenCwlsBuffers = new bool[8];
 
         [PluginService] private static IClientState ClientState { get; set; } = null!;
         [PluginService] private static IDalamudPluginInterface PluginInterface { get; set; } = null!;
@@ -312,7 +325,7 @@ namespace XIVAICompanion
             _autoRpDelayBuffer = rpConfig.ResponseDelay;
             _autoRpReplyInChannelBuffer = rpConfig.ReplyInOriginalChannel;
             _autoReplyToAllTellsBuffer = rpConfig.AutoReplyToAllTells;
-            _autoReplyToPartyBuffer = rpConfig.AutoReplyToParty;
+
             _autoRpListenSayBuffer = rpConfig.ListenSay;
             _autoRpListenTellBuffer = rpConfig.ListenTell;
             _autoRpListenShoutBuffer = rpConfig.ListenShout;
@@ -327,6 +340,23 @@ namespace XIVAICompanion
             {
                 _autoRpListenLsBuffers[i] = rpConfig.ListenLs[i];
                 _autoRpListenCwlsBuffers[i] = rpConfig.ListenCwls[i];
+            }
+
+            _openListenerModeBuffer = rpConfig.IsOpenListenerModeEnabled;
+            _openListenerListenSayBuffer = rpConfig.OpenListenerListenSay;
+            _openListenerListenTellBuffer = rpConfig.OpenListenerListenTell;
+            _openListenerListenShoutBuffer = rpConfig.OpenListenerListenShout;
+            _openListenerListenYellBuffer = rpConfig.OpenListenerListenYell;
+            _openListenerListenPartyBuffer = rpConfig.OpenListenerListenParty;
+            _openListenerListenCrossPartyBuffer = rpConfig.OpenListenerListenCrossParty;
+            _openListenerListenAllianceBuffer = rpConfig.OpenListenerListenAlliance;
+            _openListenerListenFreeCompanyBuffer = rpConfig.OpenListenerListenFreeCompany;
+            _openListenerListenNoviceNetworkBuffer = rpConfig.OpenListenerListenNoviceNetwork;
+            _openListenerListenPvPTeamBuffer = rpConfig.OpenListenerListenPvPTeam;
+            for (int i = 0; i < 8; i++)
+            {
+                _openListenerListenLsBuffers[i] = rpConfig.OpenListenerListenLs[i];
+                _openListenerListenCwlsBuffers[i] = rpConfig.OpenListenerListenCwls[i];
             }
         }
 
@@ -1126,56 +1156,112 @@ namespace XIVAICompanion
                 ImGui.Spacing();
 
                 ImGui.Text("Listen for messages in the following channels:");
-                if (ImGui.TreeNodeEx("Generic Channels##rp", ImGuiTreeNodeFlags.SpanFullWidth))
+                if (_openListenerModeBuffer)
                 {
-                    if (ImGui.BeginTable("channels", 3))
+                    if (ImGui.TreeNodeEx("Generic Channels##rp_open", ImGuiTreeNodeFlags.SpanFullWidth))
                     {
-                        ImGui.TableNextColumn();
-                        if (ImGui.Checkbox("Say", ref _autoRpListenSayBuffer)) { configuration.AutoRpConfig.ListenSay = _autoRpListenSayBuffer; configuration.Save(); }
-                        if (ImGui.Checkbox("Party", ref _autoRpListenPartyBuffer)) { configuration.AutoRpConfig.ListenParty = _autoRpListenPartyBuffer; configuration.Save(); }
-                        if (ImGui.Checkbox("Incoming Tells", ref _autoRpListenTellBuffer)) { configuration.AutoRpConfig.ListenTell = _autoRpListenTellBuffer; configuration.Save(); }
-                        if (ImGui.Checkbox("Novice Network", ref _autoRpListenNoviceNetworkBuffer)) { configuration.AutoRpConfig.ListenNoviceNetwork = _autoRpListenNoviceNetworkBuffer; configuration.Save(); }
-
-                        ImGui.TableNextColumn();
-                        if (ImGui.Checkbox("Yell", ref _autoRpListenYellBuffer)) { configuration.AutoRpConfig.ListenYell = _autoRpListenYellBuffer; configuration.Save(); }
-                        if (ImGui.Checkbox("Cross-World Party", ref _autoRpListenCrossPartyBuffer)) { configuration.AutoRpConfig.ListenCrossParty = _autoRpListenCrossPartyBuffer; configuration.Save(); }
-                        if (ImGui.Checkbox("Free Company", ref _autoRpListenFreeCompanyBuffer)) { configuration.AutoRpConfig.ListenFreeCompany = _autoRpListenFreeCompanyBuffer; configuration.Save(); }
-
-                        ImGui.TableNextColumn();
-                        if (ImGui.Checkbox("Shout", ref _autoRpListenShoutBuffer)) { configuration.AutoRpConfig.ListenShout = _autoRpListenShoutBuffer; configuration.Save(); }
-                        if (ImGui.Checkbox("Alliance", ref _autoRpListenAllianceBuffer)) { configuration.AutoRpConfig.ListenAlliance = _autoRpListenAllianceBuffer; configuration.Save(); }
-                        if (ImGui.Checkbox("PvP Team", ref _autoRpListenPvPTeamBuffer)) { configuration.AutoRpConfig.ListenPvPTeam = _autoRpListenPvPTeamBuffer; configuration.Save(); }
-                        ImGui.EndTable();
-                    }
-                    ImGui.TreePop();
-                }
-
-                if (ImGui.TreeNodeEx("Linkshells##rp", ImGuiTreeNodeFlags.SpanFullWidth))
-                {
-                    if (ImGui.BeginTable("lschannels", 4))
-                    {
-                        for (int i = 0; i < 8; i++)
+                        if (ImGui.BeginTable("channels_open", 3))
                         {
                             ImGui.TableNextColumn();
-                            if (ImGui.Checkbox($"LS{i + 1}", ref _autoRpListenLsBuffers[i])) { configuration.AutoRpConfig.ListenLs[i] = _autoRpListenLsBuffers[i]; configuration.Save(); }
-                        }
-                        ImGui.EndTable();
-                    }
-                    ImGui.TreePop();
-                }
+                            if (ImGui.Checkbox("Say##open", ref _openListenerListenSayBuffer)) { configuration.AutoRpConfig.OpenListenerListenSay = _openListenerListenSayBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Party##open", ref _openListenerListenPartyBuffer)) { configuration.AutoRpConfig.OpenListenerListenParty = _openListenerListenPartyBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Incoming Tells##open", ref _openListenerListenTellBuffer)) { configuration.AutoRpConfig.OpenListenerListenTell = _openListenerListenTellBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Novice Network##open", ref _openListenerListenNoviceNetworkBuffer)) { configuration.AutoRpConfig.OpenListenerListenNoviceNetwork = _openListenerListenNoviceNetworkBuffer; configuration.Save(); }
 
-                if (ImGui.TreeNodeEx("Cross-world Linkshells##rp", ImGuiTreeNodeFlags.SpanFullWidth))
-                {
-                    if (ImGui.BeginTable("cwlschannels", 4))
+                            ImGui.TableNextColumn();
+                            if (ImGui.Checkbox("Yell##open", ref _openListenerListenYellBuffer)) { configuration.AutoRpConfig.OpenListenerListenYell = _openListenerListenYellBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Cross-World Party##open", ref _openListenerListenCrossPartyBuffer)) { configuration.AutoRpConfig.OpenListenerListenCrossParty = _openListenerListenCrossPartyBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Free Company##open", ref _openListenerListenFreeCompanyBuffer)) { configuration.AutoRpConfig.OpenListenerListenFreeCompany = _openListenerListenFreeCompanyBuffer; configuration.Save(); }
+
+                            ImGui.TableNextColumn();
+                            if (ImGui.Checkbox("Shout##open", ref _openListenerListenShoutBuffer)) { configuration.AutoRpConfig.OpenListenerListenShout = _openListenerListenShoutBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Alliance##open", ref _openListenerListenAllianceBuffer)) { configuration.AutoRpConfig.OpenListenerListenAlliance = _openListenerListenAllianceBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("PvP Team##open", ref _openListenerListenPvPTeamBuffer)) { configuration.AutoRpConfig.OpenListenerListenPvPTeam = _openListenerListenPvPTeamBuffer; configuration.Save(); }
+                            ImGui.EndTable();
+                        }
+                        ImGui.TreePop();
+                    }
+                    if (ImGui.TreeNodeEx("Linkshells##rp_open", ImGuiTreeNodeFlags.SpanFullWidth))
                     {
-                        for (int i = 0; i < 8; i++)
+                        if (ImGui.BeginTable("lschannels_open", 4))
+                        {
+                            for (int i = 0; i < 8; i++)
+                            {
+                                ImGui.TableNextColumn();
+                                if (ImGui.Checkbox($"LS{i + 1}##open", ref _openListenerListenLsBuffers[i])) { configuration.AutoRpConfig.OpenListenerListenLs[i] = _openListenerListenLsBuffers[i]; configuration.Save(); }
+                            }
+                            ImGui.EndTable();
+                        }
+                        ImGui.TreePop();
+                    }
+                    if (ImGui.TreeNodeEx("Cross-world Linkshells##rp_open", ImGuiTreeNodeFlags.SpanFullWidth))
+                    {
+                        if (ImGui.BeginTable("cwlschannels_open", 4))
+                        {
+                            for (int i = 0; i < 8; i++)
+                            {
+                                ImGui.TableNextColumn();
+                                if (ImGui.Checkbox($"CWLS{i + 1}##open", ref _openListenerListenCwlsBuffers[i])) { configuration.AutoRpConfig.OpenListenerListenCwls[i] = _openListenerListenCwlsBuffers[i]; configuration.Save(); }
+                            }
+                            ImGui.EndTable();
+                        }
+                        ImGui.TreePop();
+                    }
+                }
+                else
+                {
+                    if (ImGui.TreeNodeEx("Generic Channels##rp", ImGuiTreeNodeFlags.SpanFullWidth))
+                    {
+                        if (ImGui.BeginTable("channels", 3))
                         {
                             ImGui.TableNextColumn();
-                            if (ImGui.Checkbox($"CWLS{i + 1}", ref _autoRpListenCwlsBuffers[i])) { configuration.AutoRpConfig.ListenCwls[i] = _autoRpListenCwlsBuffers[i]; configuration.Save(); }
+                            if (ImGui.Checkbox("Say", ref _autoRpListenSayBuffer)) { configuration.AutoRpConfig.ListenSay = _autoRpListenSayBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Party", ref _autoRpListenPartyBuffer)) { configuration.AutoRpConfig.ListenParty = _autoRpListenPartyBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Incoming Tells", ref _autoRpListenTellBuffer)) { configuration.AutoRpConfig.ListenTell = _autoRpListenTellBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Novice Network", ref _autoRpListenNoviceNetworkBuffer)) { configuration.AutoRpConfig.ListenNoviceNetwork = _autoRpListenNoviceNetworkBuffer; configuration.Save(); }
+
+                            ImGui.TableNextColumn();
+                            if (ImGui.Checkbox("Yell", ref _autoRpListenYellBuffer)) { configuration.AutoRpConfig.ListenYell = _autoRpListenYellBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Cross-World Party", ref _autoRpListenCrossPartyBuffer)) { configuration.AutoRpConfig.ListenCrossParty = _autoRpListenCrossPartyBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Free Company", ref _autoRpListenFreeCompanyBuffer)) { configuration.AutoRpConfig.ListenFreeCompany = _autoRpListenFreeCompanyBuffer; configuration.Save(); }
+
+                            ImGui.TableNextColumn();
+                            if (ImGui.Checkbox("Shout", ref _autoRpListenShoutBuffer)) { configuration.AutoRpConfig.ListenShout = _autoRpListenShoutBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("Alliance", ref _autoRpListenAllianceBuffer)) { configuration.AutoRpConfig.ListenAlliance = _autoRpListenAllianceBuffer; configuration.Save(); }
+                            if (ImGui.Checkbox("PvP Team", ref _autoRpListenPvPTeamBuffer)) { configuration.AutoRpConfig.ListenPvPTeam = _autoRpListenPvPTeamBuffer; configuration.Save(); }
+                            ImGui.EndTable();
                         }
-                        ImGui.EndTable();
+                        ImGui.TreePop();
                     }
-                    ImGui.TreePop();
+
+
+                    if (ImGui.TreeNodeEx("Linkshells##rp", ImGuiTreeNodeFlags.SpanFullWidth))
+                    {
+                        if (ImGui.BeginTable("lschannels", 4))
+                        {
+                            for (int i = 0; i < 8; i++)
+                            {
+                                ImGui.TableNextColumn();
+                                if (ImGui.Checkbox($"LS{i + 1}", ref _autoRpListenLsBuffers[i])) { configuration.AutoRpConfig.ListenLs[i] = _autoRpListenLsBuffers[i]; configuration.Save(); }
+                            }
+                            ImGui.EndTable();
+                        }
+                        ImGui.TreePop();
+                    }
+
+                    if (ImGui.TreeNodeEx("Cross-world Linkshells##rp", ImGuiTreeNodeFlags.SpanFullWidth))
+                    {
+                        if (ImGui.BeginTable("cwlschannels", 4))
+                        {
+                            for (int i = 0; i < 8; i++)
+                            {
+                                ImGui.TableNextColumn();
+                                if (ImGui.Checkbox($"CWLS{i + 1}", ref _autoRpListenCwlsBuffers[i])) { configuration.AutoRpConfig.ListenCwls[i] = _autoRpListenCwlsBuffers[i]; configuration.Save(); }
+                            }
+                            ImGui.EndTable();
+                        }
+                        ImGui.TreePop();
+                    }
                 }
 
                 ImGui.Spacing();
@@ -1218,12 +1304,12 @@ namespace XIVAICompanion
                     }
                     if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY incoming tell from ANY player and respond.\nThis bypasses the main 'Target Player Name' logic.");
 
-                    if (ImGui.Checkbox("[DEV] Auto-reply to Party chat", ref _autoReplyToPartyBuffer))
+                    if (ImGui.Checkbox("[DEV] Open Listener Mode", ref _openListenerModeBuffer))
                     {
-                        configuration.AutoRpConfig.AutoReplyToParty = _autoReplyToPartyBuffer;
+                        configuration.AutoRpConfig.IsOpenListenerModeEnabled = _openListenerModeBuffer;
                         configuration.Save();
                     }
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY message in party chat and respond.\nThis bypasses the main 'Target Player Name' logic.");
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY message in the selected channels and respond.\nThis bypasses the main 'Target Player Name' logic.");
                 }
             }
             ImGui.End();
@@ -1281,10 +1367,10 @@ namespace XIVAICompanion
 
         private void OnChatMessage(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
         {
-            bool isTellReply = type == XivChatType.TellIncoming && _autoReplyToAllTellsBuffer;
-            bool isPartyReply = type == XivChatType.Party && _autoReplyToPartyBuffer;
+            bool isTellReply = _autoReplyToAllTellsBuffer && type == XivChatType.TellIncoming;
+            bool isOpenListenerReply = _openListenerModeBuffer && IsOpenListenerChannelEnabled(type);
 
-            if (_isAutoRpRunning && (isTellReply || isPartyReply))
+            if (_isAutoRpRunning && _isDevModeEnabled && (isTellReply || isOpenListenerReply))
             {
                 if (sender.TextValue.StartsWith("[CT]")) return;
                 if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
@@ -1292,15 +1378,15 @@ namespace XIVAICompanion
                 string cleanPlayerName = ParsePlayerNameFromRaw(sender.TextValue);
                 if (cleanPlayerName == _localPlayerName) return;
 
-                string logPrefix = isTellReply ? "[Auto-Tell Reply]" : "[Auto-Party Reply]";
-                Log.Info($"{logPrefix} Captured message from '{cleanPlayerName}': {message.TextValue}");
+                string logPrefix = isTellReply ? "[Auto-Tell Reply]" : "[Open Listener]";
+                Log.Info($"{logPrefix} Captured message from '{cleanPlayerName}' in '{type}': {message.TextValue}");
 
-                string messageText = message.TextValue;
+                string replyMessageText = message.TextValue;
 
-                _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = cleanPlayerName, Message = messageText });
+                _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = cleanPlayerName, Message = replyMessageText });
                 _shouldScrollToBottom = true;
 
-                Task.Run(() => SendAutoReplyPrompt(messageText, cleanPlayerName, type));
+                Task.Run(() => SendAutoReplyPrompt(replyMessageText, cleanPlayerName, type));
 
                 _lastRpResponseTimestamp = DateTime.Now;
                 InitializeConversation();
@@ -1308,27 +1394,27 @@ namespace XIVAICompanion
                 return;
             }
 
-            if (!_isAutoRpRunning) return;
-            if (!string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) && _autoRpTargetNameBuffer == _localPlayerName) return;
-            if (string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer)) return;
-            if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
-
-            var senderName = sender.TextValue;
-            if (!string.IsNullOrEmpty(senderName) && !char.IsLetter(senderName[0]))
+            if (_isAutoRpRunning && IsRpChannelEnabled(type))
             {
-                senderName = senderName.Substring(1);
+                if (string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName) return;
+                if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
+
+                var senderName = sender.TextValue;
+                if (!string.IsNullOrEmpty(senderName) && !char.IsLetter(senderName[0]))
+                {
+                    senderName = senderName.Substring(1);
+                }
+                if (!senderName.StartsWith(_autoRpTargetNameBuffer)) return;
+
+                Log.Info($"[Auto RP] Captured message from '{_autoRpTargetNameBuffer}' in channel '{type}': {message.TextValue}");
+                string messageText = message.TextValue;
+
+                _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = _autoRpTargetNameBuffer, Message = messageText });
+                _shouldScrollToBottom = true;
+
+                Task.Run(() => SendAutoRpPrompt(messageText, type));
+                _lastRpResponseTimestamp = DateTime.Now;
             }
-            if (!senderName.StartsWith(_autoRpTargetNameBuffer)) return;
-            if (!IsRpChannelEnabled(type)) return;
-
-            Log.Info($"[Auto RP] Captured message from '{_autoRpTargetNameBuffer}' in channel '{type}': {message.TextValue}");
-            string mainMessageText = message.TextValue;
-
-            _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = _autoRpTargetNameBuffer, Message = mainMessageText });
-            _shouldScrollToBottom = true;
-
-            Task.Run(() => SendAutoRpPrompt(mainMessageText, type));
-            _lastRpResponseTimestamp = DateTime.Now;
         }
 
         private bool IsRpChannelEnabled(XivChatType type)
@@ -1349,6 +1435,29 @@ namespace XIVAICompanion
                     return _autoRpListenLsBuffers[(int)type - (int)XivChatType.Ls1];
                 case >= XivChatType.CrossLinkShell1 and <= XivChatType.CrossLinkShell8:
                     return _autoRpListenCwlsBuffers[(int)type - (int)XivChatType.CrossLinkShell1];
+                default:
+                    return false;
+            }
+        }
+
+        private bool IsOpenListenerChannelEnabled(XivChatType type)
+        {
+            switch (type)
+            {
+                case XivChatType.Say: return _openListenerListenSayBuffer;
+                case XivChatType.Party: return _openListenerListenPartyBuffer;
+                case XivChatType.Alliance: return _openListenerListenAllianceBuffer;
+                case XivChatType.TellIncoming: return _openListenerListenTellBuffer;
+                case XivChatType.Shout: return _openListenerListenShoutBuffer;
+                case XivChatType.Yell: return _openListenerListenYellBuffer;
+                case XivChatType.FreeCompany: return _openListenerListenFreeCompanyBuffer;
+                case XivChatType.CrossParty: return _openListenerListenCrossPartyBuffer;
+                case XivChatType.NoviceNetwork: return _openListenerListenNoviceNetworkBuffer;
+                case XivChatType.PvPTeam: return _openListenerListenPvPTeamBuffer;
+                case >= XivChatType.Ls1 and <= XivChatType.Ls8:
+                    return _openListenerListenLsBuffers[(int)type - (int)XivChatType.Ls1];
+                case >= XivChatType.CrossLinkShell1 and <= XivChatType.CrossLinkShell8:
+                    return _openListenerListenCwlsBuffers[(int)type - (int)XivChatType.CrossLinkShell1];
                 default:
                     return false;
             }

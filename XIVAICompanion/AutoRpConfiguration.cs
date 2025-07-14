@@ -10,7 +10,7 @@ namespace XIVAICompanion
         public float ResponseDelay { get; set; } = 1.5f;
         public bool ReplyInOriginalChannel { get; set; } = true;
         public bool AutoReplyToAllTells { get; set; } = false;
-        public bool AutoReplyToParty { get; set; } = false;
+        public bool IsOpenListenerModeEnabled { get; set; } = false;
         public float InitialResponseDelaySeconds { get; set; } = 1.5f;
 
         // Channels
@@ -24,9 +24,21 @@ namespace XIVAICompanion
         public bool ListenFreeCompany { get; set; } = false;
         public bool ListenNoviceNetwork { get; set; } = false;
         public bool ListenPvPTeam { get; set; } = false;
-
-        // Linkshell Channels
         public bool[] ListenLs { get; set; } = new bool[8];
         public bool[] ListenCwls { get; set; } = new bool[8];
+
+        // Open Channels
+        public bool OpenListenerListenSay { get; set; } = false;
+        public bool OpenListenerListenTell { get; set; } = false;
+        public bool OpenListenerListenShout { get; set; } = false;
+        public bool OpenListenerListenYell { get; set; } = false;
+        public bool OpenListenerListenParty { get; set; } = false;
+        public bool OpenListenerListenCrossParty { get; set; } = false;
+        public bool OpenListenerListenAlliance { get; set; } = false;
+        public bool OpenListenerListenFreeCompany { get; set; } = false;
+        public bool OpenListenerListenNoviceNetwork { get; set; } = false;
+        public bool OpenListenerListenPvPTeam { get; set; } = false;
+        public bool[] OpenListenerListenLs { get; set; } = new bool[8];
+        public bool[] OpenListenerListenCwls { get; set; } = new bool[8];
     }
 }
