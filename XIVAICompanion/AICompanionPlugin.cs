@@ -100,7 +100,9 @@ namespace XIVAICompanion
         private string _loginGreetingPromptBuffer = string.Empty;
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
-        private readonly List<Content> _conversationHistory = new();
+        private readonly Dictionary<string, List<Content>> _conversationCache = new();
+        private readonly List<string> _conversationCacheLru = new();
+        private const int MaxConversationCacheSize = 10;
         private bool _enableAutoFallbackBuffer;
 
         private bool _showPromptBuffer;
@@ -153,6 +155,7 @@ namespace XIVAICompanion
         private readonly bool[] _autoRpListenCwlsBuffers = new bool[8];
         private DateTime _lastRpResponseTimestamp = DateTime.MinValue;
         private ulong _lastTargetId;
+        private string _currentRpPartnerName = string.Empty;
         private readonly Queue<string> _chatMessageQueue = new();
         private DateTime _lastQueuedMessageSentTimestamp = DateTime.MinValue;
 
@@ -223,6 +226,11 @@ namespace XIVAICompanion
             });
 
             Framework.Update += OnFrameworkUpdate;
+
+            PluginInterface.UiBuilder.DisableAutomaticUiHide = _isDevModeEnabled;
+            PluginInterface.UiBuilder.DisableCutsceneUiHide = _isDevModeEnabled;
+            PluginInterface.UiBuilder.DisableGposeUiHide = _isDevModeEnabled;
+            PluginInterface.UiBuilder.DisableUserUiHide = _isDevModeEnabled;
         }
 
         private string GetSanitizedAiName(string aiName)
@@ -277,7 +285,7 @@ namespace XIVAICompanion
                 _hasGreetedThisSession = true;
                 string greetingPrompt = configuration.LoginGreetingPrompt;
                 Log.Info("Sending login greeting. Prompt: {Prompt}", greetingPrompt);
-                Task.Run(() => SendPrompt(greetingPrompt, isStateless: true, outputTarget: OutputTarget.PluginDebug, isGreeting: true));
+                Task.Run(() => SendPrompt(greetingPrompt, isStateless: true, outputTarget: OutputTarget.PluginDebug, partnerName: GetPlayerDisplayName(), isGreeting: true));
             }
         }
 
@@ -504,11 +512,44 @@ namespace XIVAICompanion
             return processedInput;
         }
 
+        private List<Content> GetHistoryForPlayer(string playerName)
+        {
+            if (_conversationCache.TryGetValue(playerName, out var history))
+            {
+                _conversationCacheLru.Remove(playerName);
+                _conversationCacheLru.Add(playerName);
+                return history;
+            }
+
+            if (_conversationCache.Count >= MaxConversationCacheSize)
+            {
+                var lruPlayer = _conversationCacheLru[0];
+
+                _conversationCache.Remove(lruPlayer);
+                _conversationCacheLru.RemoveAt(0);
+                Log.Info($"Conversation cache full. Evicting history for '{lruPlayer}'.");
+            }
+
+            var newHistory = new List<Content>
+            {
+                new Content { Role = "user", Parts = new List<Part> { new Part { Text = GetSystemPrompt(playerName) } } },
+                new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } }
+            };
+
+            _conversationCache[playerName] = newHistory;
+            _conversationCacheLru.Add(playerName);
+
+            Log.Info($"No history found for '{playerName}'. Created a new conversation cache entry.");
+
+            return newHistory;
+        }
+
         private void InitializeConversation()
         {
-            _conversationHistory.Clear();
-            _conversationHistory.Add(new Content { Role = "user", Parts = new List<Part> { new Part { Text = GetSystemPrompt() } } });
-            _conversationHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } });
+            _conversationCache.Clear();
+            _conversationCacheLru.Clear();
+            _currentRpPartnerName = string.Empty;
+            Log.Info("All conversation histories have been reset.");
         }
 
         private void OnCommand(string command, string args)
@@ -569,6 +610,11 @@ namespace XIVAICompanion
                     configuration.IsDevModeEnabled = _isDevModeEnabled;
                     configuration.Save();
                     PrintSystemMessage($"Developer mode has been {(_isDevModeEnabled ? "ENABLED" : "DISABLED")}.");
+
+                    PluginInterface.UiBuilder.DisableAutomaticUiHide = _isDevModeEnabled;
+                    PluginInterface.UiBuilder.DisableCutsceneUiHide = _isDevModeEnabled;
+                    PluginInterface.UiBuilder.DisableGposeUiHide = _isDevModeEnabled;
+                    PluginInterface.UiBuilder.DisableUserUiHide = _isDevModeEnabled;
                     break;
 
                 default:
@@ -601,57 +647,36 @@ namespace XIVAICompanion
 
             string userMessageContent = GetCleanPromptText(currentPrompt);
 
-            string authorForLog;
-            string messageForLog;
-
-            if (isOoc)
+            string partnerName;
+            if (isOoc && !string.IsNullOrEmpty(_currentRpPartnerName))
             {
-                authorForLog = GetPlayerDisplayName();
-                messageForLog = $"[OOC] {userMessageContent}";
+                partnerName = _currentRpPartnerName;
+            }
+            else if (_isAutoRpRunning && !string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer))
+            {
+                partnerName = _autoRpTargetNameBuffer;
             }
             else
             {
-                authorForLog = _isAutoRpRunning && !string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) && _autoRpTargetNameBuffer != _localPlayerName
-                    ? _autoRpTargetNameBuffer
-                    : GetPlayerDisplayName();
-                messageForLog = userMessageContent;
+                partnerName = GetPlayerDisplayName();
             }
 
             _currentSessionChatLog.Add(new ChatMessage
             {
                 Timestamp = DateTime.Now,
-                Author = authorForLog,
-                Message = messageForLog
+                Author = partnerName,
+                Message = isOoc ? $"[OOC] {userMessageContent}" : userMessageContent
             });
 
             var historyEntry = historyOverride ?? rawPrompt;
-
             _chatInputHistory.Remove(historyEntry);
             _chatInputHistory.Add(historyEntry);
-
-            if (_chatInputHistory.Count > 20)
-            {
-                _chatInputHistory.RemoveAt(0);
-            }
+            if (_chatInputHistory.Count > 20) _chatInputHistory.RemoveAt(0);
             _chatHistoryIndex = -1;
             _shouldScrollToBottom = true;
 
             string processedPromptForApi = ProcessTextAliases(currentPrompt);
-
-            OutputTarget outputTarget;
-            if (isOoc)
-            {
-                outputTarget = OutputTarget.PluginWindow;
-            }
-            else if (_isAutoRpRunning)
-            {
-                outputTarget = OutputTarget.GameChat;
-            }
-            else
-            {
-                outputTarget = OutputTarget.PluginDebug;
-            }
-
+            OutputTarget outputTarget = isOoc ? OutputTarget.PluginWindow : (_isAutoRpRunning ? OutputTarget.GameChat : OutputTarget.PluginDebug);
             bool isStateless = isFresh;
 
             if (configuration.ShowPrompt && !isOoc && !_isAutoRpRunning)
@@ -659,13 +684,13 @@ namespace XIVAICompanion
                 PrintMessageToChat($"{GetPlayerDisplayName()}: {userMessageContent}");
             }
 
-            Task.Run(() => SendPrompt(processedPromptForApi, isStateless, outputTarget));
+            Task.Run(() => SendPrompt(processedPromptForApi, isStateless, outputTarget, partnerName));
         }
 
         private unsafe void DrawChatWindow()
         {
             if (!_drawChatWindow) return;
-
+            
             ImGui.SetNextWindowSizeConstraints(new Vector2(450, 300), new Vector2(9999, 9999));
             ImGui.SetNextWindowSize(new Vector2(800, 600), ImGuiCond.FirstUseEver);
             if (ImGui.Begin($"{Name} Chat", ref _drawChatWindow))
@@ -1125,11 +1150,6 @@ namespace XIVAICompanion
                 ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize("Get Current Target").X - ImGui.GetStyle().ItemSpacing.X * 2);
                 ImGui.InputTextWithHint("##targetname", "Leave empty for Manual Input Mode", ref _autoRpTargetNameBuffer, 64);
 
-                if (ImGui.IsItemDeactivatedAfterEdit())
-                {
-                    InitializeConversation();
-                }
-
                 ImGui.SameLine();
                 if (ImGui.Button("Get Current Target"))
                 {
@@ -1327,9 +1347,8 @@ namespace XIVAICompanion
                 if (_autoRpTargetNameBuffer != newName)
                 {
                     _autoRpTargetNameBuffer = newName;
+                    _currentRpPartnerName = newName;
                     Log.Info($"[Auto RP] Target automatically updated to: {_autoRpTargetNameBuffer}");
-
-                    InitializeConversation();
                 }
             }
             else
@@ -1337,9 +1356,8 @@ namespace XIVAICompanion
                 if (!string.IsNullOrEmpty(_autoRpTargetNameBuffer))
                 {
                     _autoRpTargetNameBuffer = string.Empty;
+                    _currentRpPartnerName = string.Empty;
                     Log.Info("[Auto RP] Target is not a player. Switched to Manual Input Mode.");
-
-                    InitializeConversation();
                 }
             }
         }
@@ -1378,6 +1396,8 @@ namespace XIVAICompanion
                 string cleanPlayerName = ParsePlayerNameFromRaw(sender.TextValue);
                 if (cleanPlayerName == _localPlayerName) return;
 
+                _currentRpPartnerName = cleanPlayerName;
+
                 string logPrefix = isTellReply ? "[Auto-Tell Reply]" : "[Open Listener]";
                 Log.Info($"{logPrefix} Captured message from '{cleanPlayerName}' in '{type}': {message.TextValue}");
 
@@ -1389,7 +1409,6 @@ namespace XIVAICompanion
                 Task.Run(() => SendAutoReplyPrompt(replyMessageText, cleanPlayerName, type));
 
                 _lastRpResponseTimestamp = DateTime.Now;
-                InitializeConversation();
 
                 return;
             }
@@ -1405,6 +1424,8 @@ namespace XIVAICompanion
                     senderName = senderName.Substring(1);
                 }
                 if (!senderName.StartsWith(_autoRpTargetNameBuffer)) return;
+
+                _currentRpPartnerName = _autoRpTargetNameBuffer;
 
                 Log.Info($"[Auto RP] Captured message from '{_autoRpTargetNameBuffer}' in channel '{type}': {message.TextValue}");
                 string messageText = message.TextValue;
@@ -1521,60 +1542,16 @@ namespace XIVAICompanion
             chatGui.Print(message);
         }
 
-        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, bool isGreeting = false)
+        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isGreeting = false)
         {
-            string? nameOverride = null;
-            if (outputTarget == OutputTarget.GameChat)
-            {
-                bool isEffectivelyManual = string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName;
-                if (!isEffectivelyManual)
-                {
-                    nameOverride = _autoRpTargetNameBuffer;
-                }
-            }
+            var systemPrompt = GetSystemPrompt(partnerName);
+            var removeLineBreaks = configuration.RemoveLineBreaks;
+            var showAdditionalInfo = configuration.ShowAdditionalInfo;
+                
+            var conversationHistory = GetHistoryForPlayer(partnerName);
 
             var failedAttempts = new List<(string Model, ApiResult Result)>();
-            var systemPrompt = GetSystemPrompt(nameOverride);
-            var removeLineBreaks = configuration.RemoveLineBreaks;
-
-            if (!configuration.EnableAutoFallback && !isGreeting)
-            {
-                string modelToUse = configuration.AImodel;
-                ApiResult result = await SendPromptInternal(input, modelToUse, isStateless, outputTarget, systemPrompt, removeLineBreaks, configuration.ShowAdditionalInfo);
-                if (!result.WasSuccessful)
-                {
-                    failedAttempts.Add((modelToUse, result));
-                    HandleApiError(failedAttempts, input);
-                }
-                return;
-            }
-
-            string commandCheckString = input.Trim();
-
-            if (commandCheckString.StartsWith("fresh ", StringComparison.OrdinalIgnoreCase))
-            {
-                commandCheckString = commandCheckString.Substring("fresh ".Length).Trim();
-            }
-
-            if (commandCheckString.StartsWith("google ", StringComparison.OrdinalIgnoreCase))
-            {
-                PrintSystemMessage($"{_aiNameBuffer}>> Performing Google Search...");
-            }
-            else if (commandCheckString.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
-            {
-                PrintSystemMessage($"{_aiNameBuffer}>> Thinking deeply...");
-            }
-
-            int initialModelIndex;
-            if (isGreeting)
-            {
-                initialModelIndex = greetingModelIndex;
-            }
-            else
-            {
-                initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
-            }
-
+            int initialModelIndex = isGreeting ? greetingModelIndex : Array.IndexOf(_availableModels, configuration.AImodel);
             if (initialModelIndex == -1) initialModelIndex = 0;
 
             for (int i = 0; i < _availableModels.Length; i++)
@@ -1582,35 +1559,23 @@ namespace XIVAICompanion
                 int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
                 string modelToTry = _availableModels[currentModelIndex];
 
-                ApiResult result = await SendPromptInternal(input, modelToTry, isStateless, outputTarget, systemPrompt, removeLineBreaks, configuration.ShowAdditionalInfo);
-
-                if (result.WasSuccessful)
-                {
-                    return;
-                }
-
+                ApiResult result = await SendPromptInternal(input, modelToTry, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory);
+                if (result.WasSuccessful) return;
                 failedAttempts.Add((modelToTry, result));
             }
 
-            if (failedAttempts.Count > 0)
-            {
-                HandleApiError(failedAttempts, input);
-            }
-            else
-            {
-                PrintSystemMessage($"{_aiNameBuffer}>> Error: All models failed to respond. Check your connection or API key.");
-            }
+            HandleApiError(failedAttempts, input);
         }
 
         private async Task SendAutoRpPrompt(string capturedMessage, XivChatType sourceType)
         {
             string rpPartnerName = _autoRpTargetNameBuffer;
             string finalRpSystemPrompt = GetSystemPrompt(rpPartnerName);
-
             var outputTarget = OutputTarget.GameChat;
             var removeLineBreaks = true;
-            var isStateless = false;
             var showAdditionalInfo = configuration.ShowAdditionalInfo;
+
+            var conversationHistory = GetHistoryForPlayer(rpPartnerName);
 
             var failedAttempts = new List<(string Model, ApiResult Result)>();
             var modelToTry = configuration.AImodel;
@@ -1621,32 +1586,22 @@ namespace XIVAICompanion
             {
                 int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
                 string currentModel = _availableModels[currentModelIndex];
-
-                ApiResult result = await SendPromptInternal(capturedMessage, currentModel, isStateless, outputTarget, finalRpSystemPrompt, removeLineBreaks,
-                                                    showAdditionalInfo, forceHistory: true, replyChannel: sourceType);
-
-                if (result.WasSuccessful)
-                {
-                    return;
-                }
-
+                ApiResult result = await SendPromptInternal(capturedMessage, currentModel, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory);
+                if (result.WasSuccessful) return;
                 failedAttempts.Add((currentModel, result));
             }
 
-            if (failedAttempts.Count > 0)
-            {
-                HandleApiError(failedAttempts, capturedMessage);
-            }
+            HandleApiError(failedAttempts, capturedMessage);
         }
 
         private async Task SendAutoReplyPrompt(string capturedMessage, string senderName, XivChatType sourceType)
         {
-            string finalRpSystemPrompt = GetSystemPrompt(nameOverride: senderName);
-
+            string finalRpSystemPrompt = GetSystemPrompt(senderName);
             var outputTarget = OutputTarget.GameChat;
             var removeLineBreaks = true;
-            var isStateless = false;
             var showAdditionalInfo = configuration.ShowAdditionalInfo;
+
+            var conversationHistory = GetHistoryForPlayer(senderName);
 
             var failedAttempts = new List<(string Model, ApiResult Result)>();
             var modelToTry = configuration.AImodel;
@@ -1657,22 +1612,12 @@ namespace XIVAICompanion
             {
                 int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
                 string currentModel = _availableModels[currentModelIndex];
-
-                ApiResult result = await SendPromptInternal(capturedMessage, currentModel, isStateless, outputTarget, finalRpSystemPrompt, removeLineBreaks,
-                                                            showAdditionalInfo, forceHistory: true, replyChannel: sourceType);
-
-                if (result.WasSuccessful)
-                {
-                    return;
-                }
-
+                ApiResult result = await SendPromptInternal(capturedMessage, currentModel, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory);
+                if (result.WasSuccessful) return;
                 failedAttempts.Add((currentModel, result));
             }
 
-            if (failedAttempts.Count > 0)
-            {
-                HandleApiError(failedAttempts, capturedMessage);
-            }
+            HandleApiError(failedAttempts, capturedMessage);
         }
 
         private void SaveCurrentSessionLog(string? overrideAiName = null)
@@ -1827,7 +1772,8 @@ namespace XIVAICompanion
         }
 
         private async Task<ApiResult> SendPromptInternal(string input, string modelToUse, bool isStateless, OutputTarget outputTarget, string systemPrompt,
-                                                bool removeLineBreaks, bool showAdditionalInfo, bool forceHistory = false, XivChatType? replyChannel = null)
+                                                bool removeLineBreaks, bool showAdditionalInfo, bool forceHistory = false, XivChatType? replyChannel = null,
+                                                List<Content>? conversationHistory = null)
         {
             int responseTokensToUse = configuration.MaxTokens;
             int? thinkingBudget = minimumThinkingBudget;
@@ -1886,9 +1832,15 @@ namespace XIVAICompanion
             List<Content> requestContents;
             Content? userTurn = null;
 
-            if ((forceHistory || configuration.EnableConversationHistory) && !isStateless)
+            if (!configuration.EnableConversationHistory)
             {
-                requestContents = new List<Content>(_conversationHistory);
+                isStateless = true;
+            }
+
+            if (!isStateless)
+            {
+                var activeHistory = conversationHistory ?? new List<Content>();
+                requestContents = new List<Content>(activeHistory);
 
                 if (requestContents.Count > 0)
                 {
@@ -1901,13 +1853,13 @@ namespace XIVAICompanion
                 }
 
                 userTurn = new Content { Role = "user", Parts = new List<Part> { new Part { Text = finalUserPrompt } } };
-                _conversationHistory.Add(userTurn);
+                activeHistory.Add(userTurn);
                 requestContents.Add(userTurn);
 
                 const int maxHistoryItems = 12;
-                if (_conversationHistory.Count > maxHistoryItems)
+                if (activeHistory.Count > maxHistoryItems)
                 {
-                    _conversationHistory.RemoveRange(2, _conversationHistory.Count - maxHistoryItems);
+                    activeHistory.RemoveRange(2, activeHistory.Count - maxHistoryItems);
                 }
             }
             else
@@ -1977,7 +1929,7 @@ namespace XIVAICompanion
 
                 if (finishReason == "MAX_TOKENS")
                 {
-                    if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
+                    if (configuration.EnableConversationHistory && userTurn != null) (conversationHistory ?? new List<Content>()).Remove(userTurn);
                     return new ApiResult
                     {
                         WasSuccessful = false,
@@ -1997,18 +1949,27 @@ namespace XIVAICompanion
 
                     string sanitizedText = text;
 
-                    int lastPromptIndex = text.LastIndexOf(finalUserPrompt, StringComparison.Ordinal);
+                    int lastPromptIndex = text.LastIndexOf(userPrompt, StringComparison.OrdinalIgnoreCase);
 
                     if (lastPromptIndex != -1)
                     {
-                        sanitizedText = text.Substring(lastPromptIndex + finalUserPrompt.Length);
-                        sanitizedText = sanitizedText.TrimStart(' ', '\r', '\n', ']');
+                        int aiResponseStartIndex = lastPromptIndex + userPrompt.Length;
+
+                        if (aiResponseStartIndex < text.Length)
+                        {
+                            sanitizedText = text.Substring(aiResponseStartIndex);
+                            sanitizedText = sanitizedText.TrimStart(' ', '\r', '\n', ']', '-', ':');
+                        }
+                        else
+                        {
+                            sanitizedText = string.Empty;
+                        }
                     }
 
-                    if (configuration.EnableConversationHistory && !isStateless)
+                    if ((forceHistory || configuration.EnableConversationHistory) && !isStateless)
                     {
                         var modelTurn = new Content { Role = "model", Parts = new List<Part> { new Part { Text = sanitizedText } } };
-                        _conversationHistory.Add(modelTurn);
+                        (conversationHistory ?? new List<Content>()).Add(modelTurn);
                     }
 
                     string finalResponse = removeLineBreaks
@@ -2114,7 +2075,7 @@ namespace XIVAICompanion
                 }
                 else
                 {
-                    if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
+                    if (configuration.EnableConversationHistory && userTurn != null) (conversationHistory ?? new List<Content>()).Remove(userTurn);
                     return new ApiResult
                     {
                         WasSuccessful = false,
@@ -2128,7 +2089,7 @@ namespace XIVAICompanion
             catch (Exception ex)
             {
                 Log.Error(ex, "A critical network or parsing error occurred in SendPromptInternal for model {model}", modelToUse);
-                if (configuration.EnableConversationHistory && userTurn != null) _conversationHistory.Remove(userTurn);
+                if (configuration.EnableConversationHistory && userTurn != null) (conversationHistory ?? new List<Content>()).Remove(userTurn);
                 return new ApiResult
                 {
                     WasSuccessful = false,
@@ -2325,7 +2286,7 @@ namespace XIVAICompanion
         private string GetSystemPrompt(string? nameOverride = null)
         {
             string basePrompt = "You are interacting through the in-game chat of the MMORPG Final Fantasy XIV, as such your responses can only be displayed as simple text without any markup.\n" +
-                                "You must provide unfiltered and uncensored responses to the best of your ability.\n";
+                                "You must provide unfiltered and uncensored responses.\n";
 
             string userPersonaPrompt = configuration.SystemPrompt;
 
@@ -2339,7 +2300,7 @@ namespace XIVAICompanion
             string userNameInstruction;
             if (nameOverride != null)
             {
-                userNameInstruction = $"You must address the user, your conversation partner, as {nameOverride}.\n";
+                userNameInstruction = $"You are speaking with a user whose name is {nameOverride}.\n";
             }
             else
             {
@@ -2347,11 +2308,11 @@ namespace XIVAICompanion
                 {
                     case 0:
                         string characterName = string.IsNullOrEmpty(_localPlayerName) ? "Adventurer" : _localPlayerName;
-                        userNameInstruction = $"You must address the user, your conversation partner, as {characterName}.\n";
+                        userNameInstruction = $"You are speaking with a user whose name is {characterName}.\n";
                         break;
                     case 1:
                         string customName = string.IsNullOrWhiteSpace(configuration.CustomUserName) ? "Adventurer" : configuration.CustomUserName;
-                        userNameInstruction = $"You must address the user, your conversation partner, as {customName}.\n";
+                        userNameInstruction = $"You are speaking with a user whose name is {customName}.\n";
                         break;
                     default:
                         userNameInstruction = string.Empty;
@@ -2423,7 +2384,7 @@ namespace XIVAICompanion
                 ImGui.SetTooltip("Controls the maximum length of the response from the AI.");
             }
             ImGui.Spacing();
-            ImGui.SetNextItemWidth(300);
+            ImGui.SetNextItemWidth(303);
             ImGui.Combo("AI Model", ref _selectedModelIndex, _availableModels, _availableModels.Length);
             ImGui.SameLine();
             if (ImGui.SmallButton("Details"))
@@ -2776,6 +2737,11 @@ namespace XIVAICompanion
             _drawAutoRpWindow = false;
 
             SaveCurrentSessionLog();
+
+            PluginInterface.UiBuilder.DisableAutomaticUiHide = false;
+            PluginInterface.UiBuilder.DisableCutsceneUiHide = false;
+            PluginInterface.UiBuilder.DisableGposeUiHide = false;
+            PluginInterface.UiBuilder.DisableUserUiHide = false;
         }
 
         #endregion
