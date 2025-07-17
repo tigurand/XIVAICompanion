@@ -1949,11 +1949,11 @@ namespace XIVAICompanion
 
                     string sanitizedText = text;
 
-                    int lastPromptIndex = text.LastIndexOf(userPrompt, StringComparison.OrdinalIgnoreCase);
+                    int lastPromptIndex = text.LastIndexOf(finalUserPrompt, StringComparison.Ordinal);
 
                     if (lastPromptIndex != -1)
                     {
-                        int aiResponseStartIndex = lastPromptIndex + userPrompt.Length;
+                        int aiResponseStartIndex = lastPromptIndex + finalUserPrompt.Length;
 
                         if (aiResponseStartIndex < text.Length)
                         {
