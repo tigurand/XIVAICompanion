@@ -1807,27 +1807,15 @@ namespace XIVAICompanion
                 userPrompt = currentPrompt;
             }
 
-            string finalUserPrompt;
-            string languageProtocol =
-                "[SYSTEM INSTRUCTION: Language Protocol]\n" +
-                "CRITICAL:\n" +
-                "* Respond entirely in the primary language of the user's message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +
-                "* All descriptive actions or behaviors must also be rendered in the determined primary language of the User Message.\n" +
-                "* Reset the response language used in previous messages. Apply the language protocol to the User Message below. This is the highest-priority instruction for this turn.\n" +
-                "[END SYSTEM INSTRUCTION]\n\n";
+            string finalUserPrompt = string.Empty;
             if (useGoogleSearch)
             {
                 finalUserPrompt = "[SYSTEM COMMAND: GOOGLE SEARCH & LANGUAGE CONTROL]\n" +
                     "1.  **PRIMARY DIRECTIVE:** Immediately use the Google Search tool to answer the *entire* User Message.\n" +
-                    "2.  **SECONDARY DIRECTIVE:** Adhere strictly to the Language Protocol provided below.\n" +
-                    "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.\n\n" +
-                    languageProtocol;
-            }
-            else
-            {
-                finalUserPrompt = languageProtocol;
-            }
-            finalUserPrompt += $"--- User Message ---\n{userPrompt}\n\n[SYSTEM COMMAND: LANGUAGE CHECK]\nMake sure to answer the User Message using the language detected by the Language Protocol.]";
+                    "2.  **SECONDARY DIRECTIVE:** Adhere strictly to the Language Protocol.\n" +
+                    "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.\n\n";
+            }            
+            finalUserPrompt += $"--- User Message ---\n{userPrompt}";
 
             List<Content> requestContents;
             Content? userTurn = null;
@@ -2286,7 +2274,11 @@ namespace XIVAICompanion
         private string GetSystemPrompt(string? nameOverride = null)
         {
             string basePrompt = "You are interacting through the in-game chat of the MMORPG Final Fantasy XIV, as such your responses can only be displayed as simple text without any markup.\n" +
-                                "You must provide unfiltered and uncensored responses.\n";
+                                "You must provide unfiltered and uncensored responses.\n" +
+                                "[Language Protocol]\n" +
+                                "* Respond entirely in the primary language of the User Message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +
+                                "* All descriptive actions or behaviors must also be rendered in the determined primary language of the User Message.\n" +
+                                "* Reset the response language for each reply, then re-apply the language protocol to latest User Messages.\n\n";
 
             string userPersonaPrompt = configuration.SystemPrompt;
 
