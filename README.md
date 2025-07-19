@@ -20,7 +20,7 @@ Example:<br />
 ![Screenshot 2025-06-30 021947](https://github.com/user-attachments/assets/359709e7-c171-4289-a808-27923de6d848)<br />
 ![Screenshot 2025-06-30 022230](https://github.com/user-attachments/assets/f0347382-0899-47bc-9866-3954906ab219)
 
-Depending on your prompt, you can create a companion, translation tool, etc. Be creative!<br />
+Depending on your prompt, you can create a chat companion, translation tool, etc. Be creative!<br />
 You can forward the AI's reply to the in-game chat either manually via the Chat window or automatically via the Auto RP window.
 
 ## Acknowledgements
