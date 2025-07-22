@@ -5,5 +5,6 @@
   "Punchline": "If you're a loner like me, you probably want a personal AI companion.",
   "InternalName": "XIVAICompanion",
   "Tags": ["chat", "ai"],
-  "RepoUrl": "https://github.com/tigurand/XIVAICompanion"
+  "RepoUrl": "https://github.com/tigurand/XIVAICompanion",
+  "IconUrl": "https://raw.githubusercontent.com/tigurand/XIVAICompanion/refs/heads/main/image/icon.png"
 }
