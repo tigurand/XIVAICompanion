@@ -1779,7 +1779,7 @@ namespace XIVAICompanion
             int? thinkingBudget = minimumThinkingBudget;
             string userPrompt;
             bool useGoogleSearch = false;
-            string currentPrompt = input.Trim();
+            string currentPrompt = input.Replace('　', ' ').Trim();
 
             if (isStateless)
             {
@@ -2583,7 +2583,7 @@ namespace XIVAICompanion
             {
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(200);
-                ImGui.InputText("##logingreetingprompt", ref _loginGreetingPromptBuffer, 256);
+                ImGui.InputText("##logingreetingprompt", ref _loginGreetingPromptBuffer, 512);
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip("The prompt for the login greeting.");
