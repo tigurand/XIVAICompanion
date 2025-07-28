@@ -455,6 +455,50 @@ namespace XIVAICompanion
             }
         }
 
+        private void SetProfile(string profileName)
+        {
+            LoadAvailablePersonas();
+
+            var foundProfile = _personaFiles.FirstOrDefault(f => f.Equals(profileName, StringComparison.OrdinalIgnoreCase));
+
+            if (string.IsNullOrEmpty(foundProfile) || foundProfile.Equals("<New Profile>", StringComparison.OrdinalIgnoreCase))
+            {
+                PrintSystemMessage($"{_aiNameBuffer}>> Profile '{profileName}' not found.");
+                return;
+            }
+
+            var filePath = Path.Combine(_personaFolder.FullName, foundProfile + ".json");
+            if (!File.Exists(filePath))
+            {
+                PrintSystemMessage($"{_aiNameBuffer}>> Error: Profile file for '{foundProfile}' does not exist.");
+                return;
+            }
+
+            try
+            {
+                var json = File.ReadAllText(filePath);
+                var persona = JsonConvert.DeserializeObject<PersonaConfiguration>(json);
+
+                if (persona != null)
+                {
+                    _aiNameBuffer = persona.AIName;
+                    _letSystemPromptHandleAINameBuffer = persona.LetSystemPromptHandleAIName;
+                    _addressingModeBuffer = persona.AddressingMode;
+                    _customUserNameBuffer = persona.CustomUserName;
+                    _systemPromptBuffer = persona.SystemPrompt;
+
+                    SaveChanges();
+
+                    PrintSystemMessage($"{_aiNameBuffer}>> Profile successfully changed to '{foundProfile}'.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, $"Failed to load persona file via command: {profileName}");
+                PrintSystemMessage($"{_aiNameBuffer}>> Error: Failed to load profile '{profileName}'. See /xllog for details.");
+            }
+        }
+
         private void SavePersona(string fileName)
         {
             var persona = new PersonaConfiguration
@@ -564,6 +608,39 @@ namespace XIVAICompanion
                     OpenConfig();
                     break;
 
+                case "set":
+                    if (string.IsNullOrWhiteSpace(subCommandArgs))
+                    {
+                        PrintSystemMessage($"{_aiNameBuffer}>> Usage: /ai set <profile name>");
+
+                        LoadAvailablePersonas();
+
+                        var realProfiles = _personaFiles.Where(p => !p.Equals("<New Profile>", StringComparison.OrdinalIgnoreCase)).ToList();
+
+                        if (realProfiles.Any())
+                        {
+                            if (realProfiles.Count == 1)
+                            {
+                                PrintSystemMessage("Available profile:");
+                            }
+                            else
+                            {
+                                PrintSystemMessage("Available profiles:");
+                            }
+                            foreach (var profile in realProfiles)
+                            {
+                                PrintSystemMessage($"{profile}");
+                            }
+                        }
+                        else
+                        {
+                            PrintSystemMessage("No saved profiles found. You can create one in the config window (/ai cfg).");
+                        }
+                        return;
+                    }
+                    SetProfile(subCommandArgs);
+                    break;
+
                 case "chat":
                     _drawChatWindow = true;
                     break;
@@ -600,6 +677,7 @@ namespace XIVAICompanion
                     PrintSystemMessage("/ai fresh [prompt] - Ignores conversation history for a single, clean response.");
                     PrintSystemMessage("/ai ooc [prompt] - Sends a private, Out-Of-Character prompt. Only available with Auto Role-Play.");
                     PrintSystemMessage("/ai cfg - Opens the configuration window.");
+                    PrintSystemMessage("/ai set <profile> - Changes the current AI persona to a saved profile.");
                     PrintSystemMessage("/ai chat - Opens the dedicated chat window.");
                     PrintSystemMessage("/ai history <on|off> - Enables, disables, or toggles conversation memory.");
                     PrintSystemMessage("/ai reset - Clears the current conversation memory.");
@@ -609,7 +687,7 @@ namespace XIVAICompanion
                     _isDevModeEnabled = !_isDevModeEnabled;
                     configuration.IsDevModeEnabled = _isDevModeEnabled;
                     configuration.Save();
-                    PrintSystemMessage($"Developer mode has been {(_isDevModeEnabled ? "ENABLED" : "DISABLED")}.");
+                    PrintSystemMessage($"{_aiNameBuffer}>> Developer mode has been {(_isDevModeEnabled ? "ENABLED" : "DISABLED")}.");
 
                     PluginInterface.UiBuilder.DisableAutomaticUiHide = _isDevModeEnabled;
                     PluginInterface.UiBuilder.DisableCutsceneUiHide = _isDevModeEnabled;
@@ -1112,7 +1190,7 @@ namespace XIVAICompanion
                     {
                         if (string.IsNullOrWhiteSpace(configuration.ApiKey))
                         {
-                            PrintSystemMessage("AutoRP Error: API key is not set in /ai cfg.");
+                            PrintSystemMessage($"{_aiNameBuffer}>> AutoRP Error: API key is not set in /ai cfg.");
                         }
                         else
                         {
