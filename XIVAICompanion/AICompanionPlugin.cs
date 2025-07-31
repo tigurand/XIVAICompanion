@@ -768,7 +768,7 @@ namespace XIVAICompanion
         private unsafe void DrawChatWindow()
         {
             if (!_drawChatWindow) return;
-            
+
             ImGui.SetNextWindowSizeConstraints(new Vector2(450, 300), new Vector2(9999, 9999));
             ImGui.SetNextWindowSize(new Vector2(800, 600), ImGuiCond.FirstUseEver);
             if (ImGui.Begin($"{Name} Chat", ref _drawChatWindow))
@@ -1625,7 +1625,7 @@ namespace XIVAICompanion
             var systemPrompt = GetSystemPrompt(partnerName);
             var removeLineBreaks = configuration.RemoveLineBreaks;
             var showAdditionalInfo = configuration.ShowAdditionalInfo;
-                
+
             var conversationHistory = GetHistoryForPlayer(partnerName);
 
             var failedAttempts = new List<(string Model, ApiResult Result)>();
@@ -1892,7 +1892,7 @@ namespace XIVAICompanion
                     "1.  **PRIMARY DIRECTIVE:** Immediately use the Google Search tool to answer the *entire* User Message.\n" +
                     "2.  **SECONDARY DIRECTIVE:** Adhere strictly to the Language Protocol.\n" +
                     "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.\n\n";
-            }            
+            }
             finalUserPrompt += $"--- User Message ---\n{userPrompt}";
 
             List<Content> requestContents;
@@ -2071,7 +2071,7 @@ namespace XIVAICompanion
                         default:
                             foreach (var chunk in SplitIntoChunks(finalResponse, 1000))
                             {
-                                PrintMessageToChat($"{_aiNameBuffer}: {chunk}");
+                                PrintMessageToChat($"{configuration.AIName}: {chunk}");
                             }
                             break;
                     }
@@ -2425,6 +2425,8 @@ namespace XIVAICompanion
         {
             if (!_drawConfigWindow) return;
 
+            bool wasVisible = _drawConfigWindow;
+
             ImGui.Begin($"{Name} Configuration", ref _drawConfigWindow, ImGuiWindowFlags.AlwaysAutoResize);
 
             if (UIHelper.AddHeaderIcon(PluginInterface, "autorp_button", FontAwesomeIcon.TheaterMasks, out var openAutoRpPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Auto Role-Play Window" }) && openAutoRpPressed)
@@ -2714,6 +2716,11 @@ namespace XIVAICompanion
             }
 
             ImGui.End();
+
+            if (wasVisible && !_drawConfigWindow)
+            {
+                LoadConfigIntoBuffers();
+            }
         }
 
         private void SaveChanges()
