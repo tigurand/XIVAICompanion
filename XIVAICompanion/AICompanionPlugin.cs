@@ -45,6 +45,9 @@ namespace XIVAICompanion
     }
     public class AICompanionPlugin : IDalamudPlugin
     {
+        private static readonly string[] ReplyChannelOptions = { "Say", "Yell", "Shout", "Party", "Alliance", "Tell (Reply)", "Free Company", "PvP Team", "Novice Network",
+            "Linkshell 1", "Linkshell 2", "Linkshell 3", "Linkshell 4", "Linkshell 5", "Linkshell 6", "Linkshell 7", "Linkshell 8",
+            "CWLS 1", "CWLS 2", "CWLS 3", "CWLS 4", "CWLS 5", "CWLS 6", "CWLS 7", "CWLS 8", };
         private enum OutputTarget
         {
             PluginDebug,
@@ -67,7 +70,7 @@ namespace XIVAICompanion
         private const string commandName = "/ai";
         private const int minResponseTokens = 512;
         private const int maxResponseTokens = 8192;
-        private const int minimumThinkingBudget = 512; // Must match minResponseTokens above
+        private const int minimumThinkingBudget = 512; // minResponseTokens >= minimumThinkingBudget <= maxResponseTokens
 
         private static readonly HttpClient httpClient = new HttpClient();
 
@@ -79,9 +82,10 @@ namespace XIVAICompanion
         // Configuration Buffers
         private string _apiKeyBuffer = string.Empty;
         private int _maxTokensBuffer;
-        private readonly string[] _availableModels = { "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17" };
+        private readonly string[] _availableModels = { "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite" };
         private int _selectedModelIndex = -1;
-        private const int greetingModelIndex = 1; // 1 = gemini-2.5-flash-lite-preview-06-17
+        private const int thinkingModelIndex = 0;
+        private const int greetingModelIndex = 2;
 
         private string _aiNameBuffer = string.Empty;
         private bool _letSystemPromptHandleAINameBuffer;
@@ -140,6 +144,8 @@ namespace XIVAICompanion
         private float _autoRpInitialDelayBuffer;
         private float _autoRpDelayBuffer = 1.5f;
         private bool _autoRpReplyInChannelBuffer;
+        private bool _autoRpReplyInSpecificChannelBuffer;
+        private int _autoRpSpecificReplyChannelBuffer;
 
         private bool _autoRpListenSayBuffer = true;
         private bool _autoRpListenTellBuffer = true;
@@ -332,6 +338,12 @@ namespace XIVAICompanion
             _autoRpInitialDelayBuffer = rpConfig.InitialResponseDelaySeconds;
             _autoRpDelayBuffer = rpConfig.ResponseDelay;
             _autoRpReplyInChannelBuffer = rpConfig.ReplyInOriginalChannel;
+            _autoRpReplyInSpecificChannelBuffer = rpConfig.ReplyInSpecificChannel;
+            _autoRpSpecificReplyChannelBuffer = rpConfig.SpecificReplyChannel;
+            if (_autoRpSpecificReplyChannelBuffer == -1)
+            {
+                _autoRpSpecificReplyChannelBuffer = 0;
+            }
             _autoReplyToAllTellsBuffer = rpConfig.AutoReplyToAllTells;
 
             _autoRpListenSayBuffer = rpConfig.ListenSay;
@@ -373,7 +385,7 @@ namespace XIVAICompanion
             _selectedModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
             if (_selectedModelIndex == -1)
             {
-                _selectedModelIndex = 0;
+                _selectedModelIndex = 1;
             }
             _apiKeyBuffer = configuration.ApiKey;
             _maxTokensBuffer = configuration.MaxTokens > 0 ? configuration.MaxTokens : 1024;
@@ -1160,8 +1172,8 @@ namespace XIVAICompanion
         {
             if (!_drawAutoRpWindow) return;
 
-            ImGui.SetNextWindowSizeConstraints(new Vector2(480, 410), new Vector2(9999, 9999));
-            ImGui.SetNextWindowSize(new Vector2(480, 410), ImGuiCond.FirstUseEver);
+            ImGui.SetNextWindowSizeConstraints(new Vector2(480, 440), new Vector2(9999, 9999));
+            ImGui.SetNextWindowSize(new Vector2(480, 440), ImGuiCond.FirstUseEver);
             if (ImGui.Begin("Auto Role-Play", ref _drawAutoRpWindow))
             {
                 if (_isAutoRpRunning)
@@ -1368,12 +1380,34 @@ namespace XIVAICompanion
 
                 ImGui.Text("Advanced Settings");
 
+                ImGui.BeginDisabled(_autoRpReplyInSpecificChannelBuffer);
                 if (ImGui.Checkbox("Reply in original channel", ref _autoRpReplyInChannelBuffer))
                 {
                     configuration.AutoRpConfig.ReplyInOriginalChannel = _autoRpReplyInChannelBuffer;
                     configuration.Save();
                 }
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("If checked, the AI will attempt to respond in the same channel the message was received in (e.g., Party, Alliance, Tell).\nIf unchecked or not possible, it will use the default chat channel.");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("If checked, the AI will attempt to respond in the same channel the message was received in.");
+                ImGui.EndDisabled();
+
+                ImGui.BeginDisabled(_autoRpReplyInChannelBuffer);
+                if (ImGui.Checkbox("Reply to a specific channel:", ref _autoRpReplyInSpecificChannelBuffer))
+                {
+                    configuration.AutoRpConfig.ReplyInSpecificChannel = _autoRpReplyInSpecificChannelBuffer;
+                    configuration.Save();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("If checked, the AI will always respond in the selected channel.");
+
+                if (configuration.AutoRpConfig.ReplyInSpecificChannel)
+                {
+                    ImGui.SameLine();
+                    ImGui.SetNextItemWidth(150);
+                    if (ImGui.Combo("##SpecificChannelCombo", ref _autoRpSpecificReplyChannelBuffer, ReplyChannelOptions, ReplyChannelOptions.Length))
+                    {
+                        configuration.AutoRpConfig.SpecificReplyChannel = _autoRpSpecificReplyChannelBuffer;
+                        configuration.Save();
+                    }
+                }
+                ImGui.EndDisabled();
 
                 ImGui.SetNextItemWidth(100);
                 if (ImGui.DragFloat("Initial reply delay (sec)", ref _autoRpInitialDelayBuffer, 0.1f, 0.0f, 10.0f))
@@ -1597,6 +1631,39 @@ namespace XIVAICompanion
             }
         }
 
+        private string GetPrefixForChannelIndex(int index)
+        {
+            return index switch
+            {
+                0 => "/s ",
+                1 => "/y ",
+                2 => "/sh ",
+                3 => "/p ",
+                4 => "/a ",
+                5 => "/r ",
+                6 => "/fc ",
+                7 => "/pvpteam ",
+                8 => "/n ",
+                9 => "/l1 ",
+                10 => "/l2 ",
+                11 => "/l3 ",
+                12 => "/l4 ",
+                13 => "/l5 ",
+                14 => "/l6 ",
+                15 => "/l7 ",
+                16 => "/l8 ",
+                17 => "/cwl1 ",
+                18 => "/cwl2 ",
+                19 => "/cwl3 ",
+                20 => "/cwl4 ",
+                21 => "/cwl5 ",
+                22 => "/cwl6 ",
+                23 => "/cwl7 ",
+                24 => "/cwl8 ",
+                _ => string.Empty
+            };
+        }
+
         private void PrintMessageToChat(string message)
         {
             if (!configuration.UseCustomColors || configuration.ForegroundColor.W < 0.05f)
@@ -1629,8 +1696,14 @@ namespace XIVAICompanion
             var conversationHistory = GetHistoryForPlayer(partnerName);
 
             var failedAttempts = new List<(string Model, ApiResult Result)>();
-            int initialModelIndex = isGreeting ? greetingModelIndex : Array.IndexOf(_availableModels, configuration.AImodel);
-            if (initialModelIndex == -1) initialModelIndex = 0;
+            int initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
+
+            if (input.StartsWith("think ", StringComparison.OrdinalIgnoreCase))
+                initialModelIndex = thinkingModelIndex;
+            else if (isGreeting)
+                initialModelIndex = greetingModelIndex;
+
+            if (initialModelIndex == -1) initialModelIndex = 1;
 
             for (int i = 0; i < _availableModels.Length; i++)
             {
@@ -2056,7 +2129,15 @@ namespace XIVAICompanion
                             await Framework.RunOnFrameworkThread(() =>
                             {
                                 string commandPrefix = string.Empty;
-                                if (configuration.AutoRpConfig.ReplyInOriginalChannel && replyChannel.HasValue)
+                                if (configuration.AutoRpConfig.ReplyInSpecificChannel)
+                                {
+                                    commandPrefix = GetPrefixForChannelIndex(configuration.AutoRpConfig.SpecificReplyChannel);
+                                }
+                                else if (configuration.AutoRpConfig.AutoReplyToAllTells && replyChannel.HasValue && replyChannel.Value == XivChatType.TellIncoming)
+                                {
+                                    commandPrefix = "/r ";
+                                }
+                                else if (configuration.AutoRpConfig.ReplyInOriginalChannel && replyChannel.HasValue)
                                 {
                                     commandPrefix = GetReplyPrefix(replyChannel.Value);
                                 }
@@ -2464,9 +2545,13 @@ namespace XIVAICompanion
                 string modelsDocs = "";
                 if (_selectedModelIndex == 0)
                 {
-                    modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash";
+                    modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro";
                 }
                 else if (_selectedModelIndex == 1)
+                {
+                    modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash";
+                }
+                else if (_selectedModelIndex == 2)
                 {
                     modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-lite";
                 }

@@ -9,6 +9,8 @@ namespace XIVAICompanion
         public bool AutoTarget { get; set; } = false;
         public float ResponseDelay { get; set; } = 1.5f;
         public bool ReplyInOriginalChannel { get; set; } = true;
+        public bool ReplyInSpecificChannel { get; set; } = false;
+        public int SpecificReplyChannel { get; set; } = 0;
         public bool AutoReplyToAllTells { get; set; } = false;
         public bool IsOpenListenerModeEnabled { get; set; } = false;
         public float InitialResponseDelaySeconds { get; set; } = 1.5f;
