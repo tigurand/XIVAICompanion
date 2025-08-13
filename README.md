@@ -5,7 +5,9 @@ Instead of just a simple AI, it is now your companion!
 
 # Installation
 Add<br />
-`https://raw.githubusercontent.com/tigurand/DalamudPlugins/refs/heads/main/repo.json`<br />
+```
+https://raw.githubusercontent.com/tigurand/DalamudPlugins/refs/heads/main/repo.json
+```
 to list of custom repo under Experimental tab in dalamud settings.  
 Install and enable XIV AI Companion.
 
