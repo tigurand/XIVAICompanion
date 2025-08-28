@@ -12,20 +12,33 @@ namespace XIVAICompanion
             if (string.IsNullOrEmpty(rawSender)) return string.Empty;
 
             string cleanedName = rawSender;
-            if (!char.IsLetter(cleanedName[0]))
+
+            while (cleanedName.Length > 0 && !char.IsLetter(cleanedName[0]))
             {
                 cleanedName = cleanedName.Substring(1);
+            }
+
+            if (cleanedName.Length >= 4 &&
+                char.IsUpper(cleanedName[0]) &&
+                char.IsUpper(cleanedName[1]) &&
+                char.IsUpper(cleanedName[2]) &&
+                cleanedName[3] == ' ')
+            {
+                cleanedName = cleanedName.Substring(4);
             }
 
             for (int i = 1; i < cleanedName.Length; i++)
             {
                 if (char.IsUpper(cleanedName[i]) && cleanedName[i - 1] != ' ')
                 {
-                    return cleanedName.Substring(0, i).Trim();
+                    cleanedName = cleanedName.Substring(0, i).Trim();
+                    break;
                 }
             }
 
-            return cleanedName.Trim();
+            cleanedName = cleanedName.Trim();
+
+            return cleanedName;
         }
 
         private void OnChatMessage(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
