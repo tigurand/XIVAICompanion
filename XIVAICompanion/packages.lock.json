@@ -4,9 +4,9 @@
     "net9.0-windows7.0": {
       "DalamudPackager": {
         "type": "Direct",
-        "requested": "[12.0.0, )",
-        "resolved": "12.0.0",
-        "contentHash": "J5TJLV3f16T/E2H2P17ClWjtfEBPpq3yxvqW46eN36JCm6wR+EaoaYkqG9Rm5sHqs3/nK/vKjWWyvEs/jhKoXw=="
+        "requested": "[13.1.0, )",
+        "resolved": "13.1.0",
+        "contentHash": "XdoNhJGyFby5M/sdcRhnc5xTop9PHy+H50PTWpzLhJugjB19EDBiHD/AsiDF66RETM+0qKUdJBZrNuebn7qswQ=="
       },
       "DotNet.ReproducibleBuilds": {
         "type": "Direct",
@@ -16,9 +16,15 @@
       },
       "ECommons": {
         "type": "Direct",
-        "requested": "[3.0.0.4, )",
-        "resolved": "3.0.0.4",
-        "contentHash": "9SfGiyi/ro3iAfvskx+P2WMbAZkpHW0Wg2/XVpBznUuSwXJOlWDV8ekzfROIgfpCVuC+eUFNd3tPhFFl6vwjvQ=="
+        "requested": "[3.0.1.9, )",
+        "resolved": "3.0.1.9",
+        "contentHash": "Bv7Uv9VZwPpS/AA4TnzeCCPw2uanp1Pg9RGpM5lcDWC8ENBNkyp/fAe9JdHwI3WByOZSZVkMvW8jRycBhzehlA=="
+      },
+      "Glamourer.Api": {
+        "type": "Direct",
+        "requested": "[2.6.0, )",
+        "resolved": "2.6.0",
+        "contentHash": "zysCZgNBRm3k3qvibyw/31MmEckX0Uh0ZsT+Sax3ZHnYIRELr9Qhbz3cjJz7u0RHGIrNJiRpktu/LxgHEqDItw=="
       }
     }
   }

@@ -1,9 +1,9 @@
-﻿using System;
+﻿using Dalamud.Game.Text.SeStringHandling;
+using System;
 using System.IO;
-using Dalamud.Game.Text.SeStringHandling;
 using System.Numerics;
 
-namespace XIVAICompanion
+namespace XIVAICompanion.Utils
 {
     public abstract class AbstractColorPayload : Payload
     {

@@ -2,7 +2,7 @@
 using Dalamud.Plugin;
 using System.Numerics;
 
-namespace XIVAICompanion
+namespace XIVAICompanion.Configurations
 {
     public class Configuration : IPluginConfiguration
     {
@@ -19,6 +19,8 @@ namespace XIVAICompanion
         public int AddressingMode { get; set; } = 0;
         public string CustomUserName { get; set; } = "Adventurer";
         public string SystemPrompt { get; set; } = "";
+        public string MinionToReplace { get; set; } = string.Empty;
+        public string NpcGlamourerDesignGuid { get; set; } = string.Empty;
 
         // Behavior Settings
         public bool GreetOnLogin { get; set; } = true;
@@ -40,6 +42,12 @@ namespace XIVAICompanion
 
         //Auto RP Settings
         public AutoRpConfiguration AutoRpConfig { get; set; } = new();
+
+        // Mode Toggles
+        public bool SearchMode { get; set; } = false;
+        public bool ThinkMode { get; set; } = false;
+        public bool FreshMode { get; set; } = false;
+        public bool OocMode { get; set; } = false;
 
         public bool IsDevModeEnabled { get; set; } = false;
 

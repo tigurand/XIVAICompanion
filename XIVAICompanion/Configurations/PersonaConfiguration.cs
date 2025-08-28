@@ -1,4 +1,4 @@
-﻿namespace XIVAICompanion
+﻿namespace XIVAICompanion.Configurations
 {
     public class PersonaConfiguration
     {
@@ -7,5 +7,7 @@
         public int AddressingMode { get; set; } = 0;
         public string CustomUserName { get; set; } = "Adventurer";
         public string SystemPrompt { get; set; } = "";
+        public string MinionToReplace { get; set; } = string.Empty;
+        public string NpcGlamourerDesignGuid { get; set; } = string.Empty;
     }
 }

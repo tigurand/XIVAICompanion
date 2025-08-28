@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace XIVAICompanion
+namespace XIVAICompanion.Configurations
 {
     [Serializable]
     public class AutoRpConfiguration
