@@ -41,9 +41,6 @@ namespace XIVAICompanion
     }
     public partial class AICompanionPlugin : IDalamudPlugin
     {
-        private static readonly string[] ReplyChannelOptions = { "Say", "Yell", "Shout", "Party", "Alliance", "Tell (Reply)", "Free Company", "PvP Team", "Novice Network",
-            "Linkshell 1", "Linkshell 2", "Linkshell 3", "Linkshell 4", "Linkshell 5", "Linkshell 6", "Linkshell 7", "Linkshell 8",
-            "CWLS 1", "CWLS 2", "CWLS 3", "CWLS 4", "CWLS 5", "CWLS 6", "CWLS 7", "CWLS 8", };
         private enum OutputTarget
         {
             PluginDebug,

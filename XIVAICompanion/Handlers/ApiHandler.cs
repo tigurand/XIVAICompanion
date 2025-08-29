@@ -120,8 +120,8 @@ namespace XIVAICompanion
             if (isSearch)
             {
                 userPrompt = currentPrompt;
-                responseTokensToUse = maxResponseTokens;
-                thinkingBudget = maxResponseTokens;
+                responseTokensToUse = _maxTokensBuffer;
+                thinkingBudget = _maxTokensBuffer;
                 useWebSearch = true;
             }
             else if (isThink)
