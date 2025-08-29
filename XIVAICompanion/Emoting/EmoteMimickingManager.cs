@@ -21,6 +21,7 @@ namespace XIVAICompanion.Emoting
         private readonly EmoteHooks _emoteHooks;
         private readonly EmoteManager _emoteManager;
         private readonly IDataManager _dataManager;
+        private readonly AICompanionPlugin _plugin;
         private readonly ConcurrentDictionary<string, string> _currentlyEmotingCharacters = new();
         private readonly ConcurrentDictionary<uint, CancellationTokenSource> _pendingEmotes = new();
         private bool _disposed = false;
@@ -43,9 +44,10 @@ namespace XIVAICompanion.Emoting
             53  // Stand up from ground sit
         };
 
-        public EmoteMimickingManager(IGameInteropProvider interopProvider, IClientState clientState,
+        public EmoteMimickingManager(AICompanionPlugin plugin, IGameInteropProvider interopProvider, IClientState clientState,
             IObjectTable objectTable, IDataManager dataManager, ISigScanner sigScanner)
         {
+            _plugin = plugin;
             _dataManager = dataManager;
             _emoteManager = new EmoteManager();
             _emoteHooks = new EmoteHooks(interopProvider, clientState, objectTable, sigScanner);
@@ -84,21 +86,61 @@ namespace XIVAICompanion.Emoting
                 {
                     var minionId = (uint)minion.GameObjectId;
 
-                    if (!isFacialExpression || _stopEmoteIds.Contains(emoteId))
+                    if (isFacialExpression)
                     {
-                        if (_pendingEmotes.TryRemove(minionId, out var oldCts))
+                        await Task.Run(async () =>
                         {
-                            oldCts.Cancel();
-                            oldCts.Dispose();
-                            await Task.Yield();
-                        }
+                            try
+                            {
+                                await Task.Delay(MimicDelay);
+                                await Service.Framework.RunOnFrameworkThread(() =>
+                                {
+                                    _emoteManager.ApplyFacialExpression(minion, animationId);
+                                });
+                            }
+                            catch (Exception ex)
+                            {
+                                Service.Log.Error(ex, "Error in facial expression mimic task");
+                            }
+                        });
+                        continue;
                     }
+
+                    if (!_stopEmoteIds.Contains(emoteId))
+                    {
+                        _emoteManager.ClearGroundSitOrSleepState();
+                    }
+
+                    _emoteManager.StopLoopingEmote(minionId, minion);
+
+                    if (_pendingEmotes.TryRemove(minionId, out var oldCts))
+                    {
+                        oldCts.Cancel();
+                        oldCts.Dispose();
+                    }
+
+                    await Task.Delay(100);
 
                     var newCts = new CancellationTokenSource();
 
-                    if (!isFacialExpression)
+                    var addSuccess = false;
+                    for (int attempt = 0; attempt < 5; attempt++)
                     {
-                        _pendingEmotes[minionId] = newCts;
+                        if (_pendingEmotes.TryAdd(minionId, newCts))
+                        {
+                            addSuccess = true;
+                            break;
+                        }
+
+                        _pendingEmotes.TryRemove(minionId, out var existing);
+                        existing?.Dispose();
+                        await Task.Delay(20);
+                    }
+
+                    if (!addSuccess)
+                    {
+                        newCts.Dispose();
+                        continue;
                     }
 
                     await Task.Run(async () =>
@@ -117,12 +159,17 @@ namespace XIVAICompanion.Emoting
                                 }
                             });
                         }
+                        catch (TaskCanceledException)
+                        {
+                            // Expected when cancelled
+                        }
+                        catch (Exception ex)
+                        {
+                            Service.Log.Error(ex, "Error in emote mimic task");
+                        }
                         finally
                         {
-                            if (!isFacialExpression)
-                            {
-                                _pendingEmotes.TryRemove(minionId, out _);
-                            }
+                            _pendingEmotes.TryRemove(minionId, out _);
                         }
                     }, newCts.Token);
                 }
@@ -154,9 +201,7 @@ namespace XIVAICompanion.Emoting
 
         private bool IsPlayerCompanion(ICharacter companion)
         {
-            //return Vector3.Distance(Service.ClientState.LocalPlayer?.Position ?? Vector3.Zero, companion.Position) < 30f;
-            var glamouredCompanion = (companion.GameObjectId != 0) ? Service.ObjectTable.FirstOrDefault(o => o.GameObjectId == companion.GameObjectId) : null;
-            return glamouredCompanion != null;
+            return companion.GameObjectId == _plugin._glamouredMinionObjectId;
         }
 
         private bool IsHumanoidMinion(ICharacter minion)
@@ -272,7 +317,9 @@ namespace XIVAICompanion.Emoting
 
         private void ApplyLoopingEmote(ICharacter minion, ushort animationId)
         {
-            _emoteManager.StopLoopingEmote((uint)minion.GameObjectId, minion);
+            var minionId = (uint)minion.GameObjectId;
+
+            _emoteManager.StopLoopingEmote(minionId, minion);
 
             if (Service.ClientState.LocalPlayer != null)
             {
@@ -280,6 +327,10 @@ namespace XIVAICompanion.Emoting
                     Service.ClientState.LocalPlayer,
                     minion,
                     animationId);
+            }
+            else
+            {
+                Service.Log.Warning($"LocalPlayer is null, cannot start looping emote for minion {minionId}");
             }
         }
 

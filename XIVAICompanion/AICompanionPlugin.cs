@@ -194,7 +194,7 @@ namespace XIVAICompanion
         private readonly bool[] _openListenerListenCwlsBuffers = new bool[8];
 
         // Minion Stuff
-        private ulong _glamouredMinionObjectId;
+        public ulong _glamouredMinionObjectId;
         private Guid _lastAppliedDesignGuid = Guid.Empty;
         private bool _isWaitingForGlamourer = false;
         private readonly GlamourerManager _glamourerManager;
@@ -208,7 +208,7 @@ namespace XIVAICompanion
             ECommonsMain.Init(Service.PluginInterface, this);
             _glamourerManager = new GlamourerManager(Service.PluginInterface);
             _minionNamingManager = new MinionNamingManager(Service.NamePlateGui, Service.ObjectTable, configuration);
-            _emoteMimickingManager = new EmoteMimickingManager(Service.InteropProvider, Service.ClientState, Service.ObjectTable, Service.DataManager, SigScanner);
+            _emoteMimickingManager = new EmoteMimickingManager(this, Service.InteropProvider, Service.ClientState, Service.ObjectTable, Service.DataManager, SigScanner);
 
             configuration = Service.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
             configuration.Initialize(Service.PluginInterface);

@@ -20,6 +20,7 @@ namespace XIVAICompanion.Emoting
     public class EmoteManager : IDisposable
     {
         private readonly ConcurrentDictionary<uint, EmoteState> _emoteStates = new();
+        private readonly object _stateLock = new object();
 
         public bool IsMinionGroundSitOrSleep { get; private set; } = false;
 
@@ -51,21 +52,51 @@ namespace XIVAICompanion.Emoting
 
             var gameObjectId = (uint)character.GameObjectId;
 
-            StopLoopingEmote(gameObjectId, character);
+            EmoteState newState;
+            CancellationTokenSource cts;
 
-            var newState = new EmoteState
+            lock (_stateLock)
             {
-                Cts = new CancellationTokenSource(),
-                AnimationId = animationId,
-                IsLooping = true
-            };
+                StopLoopingEmoteInternal(gameObjectId, character);
 
-            if (!_emoteStates.TryAdd(gameObjectId, newState))
-            {
-                newState.Cts.Dispose();
-                return;
+                Thread.Sleep(50);
+
+                newState = new EmoteState
+                {
+                    Cts = new CancellationTokenSource(),
+                    AnimationId = animationId,
+                    IsLooping = true
+                };
+
+                var addAttempts = 0;
+                var addResult = false;
+
+                while (addAttempts < 5 && !addResult)
+                {
+                    addResult = _emoteStates.TryAdd(gameObjectId, newState);
+
+                    if (!addResult)
+                    {
+                        addAttempts++;
+
+                        if (_emoteStates.TryRemove(gameObjectId, out var oldState))
+                        {
+                            oldState.Cts?.Cancel();
+                            oldState.Cts?.Dispose();
+                        }
+
+                        Thread.Sleep(25);
+                    }
+                }
+
+                if (!addResult)
+                {
+                    newState.Cts.Dispose();
+                    return;
+                }
+
+                cts = newState.Cts;
             }
-            var cts = newState.Cts;
 
             Task.Run(async () =>
             {
@@ -74,7 +105,7 @@ namespace XIVAICompanion.Emoting
                     ApplyAnimation(character, animationId);
                     Vector3 startPos = player.Position;
 
-                    await Task.Delay(200, cts.Token);
+                    await Task.Delay(300, cts.Token);
 
                     while (!cts.Token.IsCancellationRequested)
                     {
@@ -93,18 +124,21 @@ namespace XIVAICompanion.Emoting
                 }
                 catch (TaskCanceledException)
                 {
-                    // This is expected when the emote is stopped externally.
+                    // Expected when cancelled
                 }
                 catch (Exception ex)
                 {
-                    Service.Log.Error(ex, "Error in looping emote task.");
+                    Service.Log.Error(ex, "Error in looping emote task");
                 }
                 finally
                 {
-                    if (_emoteStates.TryGetValue(gameObjectId, out var currentState) && currentState.Cts == cts)
+                    lock (_stateLock)
                     {
-                        StopEmote(character);
-                        _emoteStates.TryRemove(gameObjectId, out _);
+                        if (_emoteStates.TryGetValue(gameObjectId, out var currentState) && currentState.Cts == cts)
+                        {
+                            StopEmote(character);
+                            _emoteStates.TryRemove(gameObjectId, out _);
+                        }
                     }
                 }
             }, cts.Token);
@@ -113,10 +147,42 @@ namespace XIVAICompanion.Emoting
         public void StopEmote(ICharacter character)
         {
             if (character == null) return;
-            ApplyAnimation(character, 0);
+
+            try
+            {
+                unsafe
+                {
+                    var characterStruct = (Character*)character.Address;
+                    if (characterStruct != null)
+                    {
+                        characterStruct->Timeline.BaseOverride = 0;
+                        Thread.Sleep(15);
+                        characterStruct->Timeline.LipsOverride = 0;
+                        Thread.Sleep(15);
+                        characterStruct->Timeline.BaseOverride = 0;
+                        Thread.Sleep(15);
+                        characterStruct->Timeline.BaseOverride = 0;
+
+                        IsMinionGroundSitOrSleep = false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Service.Log.Error(ex, "Error in force stop emote");
+                ApplyAnimation(character, 0);
+            }
         }
 
         public void StopLoopingEmote(uint gameObjectId, ICharacter? character = null)
+        {
+            lock (_stateLock)
+            {
+                StopLoopingEmoteInternal(gameObjectId, character);
+            }
+        }
+
+        private void StopLoopingEmoteInternal(uint gameObjectId, ICharacter? character = null)
         {
             if (_emoteStates.TryRemove(gameObjectId, out var state))
             {
@@ -138,6 +204,16 @@ namespace XIVAICompanion.Emoting
             {
                 var characterStruct = (Character*)character.Address;
                 if (characterStruct == null) return;
+
+                if (animationId != 0)
+                {
+                    characterStruct->Timeline.BaseOverride = 0;
+                    Thread.Sleep(15);
+                    characterStruct->Timeline.LipsOverride = 0;
+                    Thread.Sleep(15);
+                    characterStruct->Timeline.BaseOverride = 0;
+                    Thread.Sleep(15);
+                }
 
                 characterStruct->Timeline.BaseOverride = animationId;
 
@@ -202,13 +278,18 @@ namespace XIVAICompanion.Emoting
 
         public bool IsLoopingEmoteActive(uint gameObjectId)
         {
-            return _emoteStates.TryGetValue(gameObjectId, out var state) && state.IsLooping;
+            var result = _emoteStates.TryGetValue(gameObjectId, out var state) && state.IsLooping;
+            Service.Log.Debug($"[LOOPING_STATE] IsLoopingEmoteActive for {gameObjectId}: {result}");
+            return result;
         }
 
         public void ClearGroundSitOrSleepState()
         {
-            IsMinionGroundSitOrSleep = false;
-            Service.Log.Debug("Minion ground sit/sleep state cleared explicitly.");
+            lock (_stateLock)
+            {
+                IsMinionGroundSitOrSleep = false;
+                Service.Log.Debug("[LOOPING_STATE] Minion ground sit/sleep state cleared explicitly.");
+            }
         }
     }
 }
