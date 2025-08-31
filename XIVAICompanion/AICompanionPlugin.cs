@@ -136,8 +136,6 @@ namespace XIVAICompanion
         // Chat Mode Toggles
         private bool _searchModeBuffer = false;
         private bool _thinkModeBuffer = false;
-        private bool _freshModeBuffer = false;
-        private bool _oocModeBuffer = false;
 
         // Temporary variables for single-use mode states
         private bool _tempSearchMode = false;
@@ -594,8 +592,6 @@ namespace XIVAICompanion
 
             _searchModeBuffer = configuration.SearchMode;
             _thinkModeBuffer = configuration.ThinkMode;
-            _freshModeBuffer = configuration.FreshMode;
-            _oocModeBuffer = configuration.OocMode;
 
             _isDevModeEnabled = configuration.IsDevModeEnabled;
         }

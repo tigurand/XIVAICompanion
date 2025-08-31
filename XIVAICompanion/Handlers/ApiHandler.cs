@@ -112,8 +112,8 @@ namespace XIVAICompanion
 
             bool isSearch = (configuration.SearchMode || tempSearchMode) && !isGreeting;
             bool isThink = (configuration.ThinkMode || tempThinkMode) && !isGreeting;
-            bool isFresh = (configuration.FreshMode || tempFreshMode) && !isGreeting;
-            bool isOoc = (configuration.OocMode || tempOocMode) && !isGreeting;
+            bool isFresh = (_chatFreshMode || tempFreshMode) && !isGreeting;
+            bool isOoc = (_chatOocMode || tempOocMode) && !isGreeting;
 
             if (isStateless || isFresh)
             {
@@ -438,8 +438,8 @@ namespace XIVAICompanion
 
             bool isSearch = configuration.SearchMode || _tempSearchMode;
             bool isThink = configuration.ThinkMode || _tempThinkMode;
-            bool isFresh = configuration.FreshMode || _tempFreshMode;
-            bool isOoc = configuration.OocMode || _tempOocMode;
+            bool isFresh = _chatFreshMode || _tempFreshMode;
+            bool isOoc = _chatOocMode || _tempOocMode;
 
             string processedPrompt = currentPrompt;
 

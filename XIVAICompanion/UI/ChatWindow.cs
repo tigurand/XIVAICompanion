@@ -209,12 +209,8 @@ namespace XIVAICompanion
                 ImGui.SameLine();
 
                 _chatModeSelection = configuration.SearchMode ? 1 : (configuration.ThinkMode ? 2 : 0);
-                _chatFreshMode = configuration.FreshMode;
-                _chatOocMode = configuration.OocMode;
 
                 int previousModeSelection = _chatModeSelection;
-                bool previousFreshMode = _chatFreshMode;
-                bool previousOocMode = _chatOocMode;
 
                 ImGui.RadioButton("Normal", ref _chatModeSelection, 0);
                 ImGui.SameLine();
@@ -243,20 +239,6 @@ namespace XIVAICompanion
                     configuration.Save();
                     _searchModeBuffer = configuration.SearchMode;
                     _thinkModeBuffer = configuration.ThinkMode;
-                }
-
-                if (previousFreshMode != _chatFreshMode)
-                {
-                    configuration.FreshMode = _chatFreshMode;
-                    configuration.Save();
-                    _freshModeBuffer = configuration.FreshMode;
-                }
-
-                if (previousOocMode != _chatOocMode)
-                {
-                    configuration.OocMode = _chatOocMode;
-                    configuration.Save();
-                    _oocModeBuffer = configuration.OocMode;
                 }
 
                 ImGui.Spacing();

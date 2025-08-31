@@ -296,20 +296,16 @@ namespace XIVAICompanion
                 case "/aifresh":
                     if (string.IsNullOrWhiteSpace(args))
                     {
-                        configuration.FreshMode = !configuration.FreshMode;
-                        configuration.Save();
-                        _freshModeBuffer = configuration.FreshMode;
-                        PrintSystemMessage(configuration.FreshMode
+                        _chatFreshMode = !_chatFreshMode;
+                        PrintSystemMessage(_chatFreshMode
                             ? $"{_aiNameBuffer}>> Fresh mode is now enabled."
                             : $"{_aiNameBuffer}>> Fresh mode is now disabled.");
                     }
                     else if (args.Equals("on", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!configuration.FreshMode)
+                        if (!_chatFreshMode)
                         {
-                            configuration.FreshMode = true;
-                            configuration.Save();
-                            _freshModeBuffer = true;
+                            _chatFreshMode = true;
                             PrintSystemMessage($"{_aiNameBuffer}>> Fresh mode is now enabled.");
                         }
                         else
@@ -319,11 +315,9 @@ namespace XIVAICompanion
                     }
                     else if (args.Equals("off", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (configuration.FreshMode)
+                        if (_chatFreshMode)
                         {
-                            configuration.FreshMode = false;
-                            configuration.Save();
-                            _freshModeBuffer = false;
+                            _chatFreshMode = false;
                             PrintSystemMessage($"{_aiNameBuffer}>> Fresh mode is now disabled.");
                         }
                         else
@@ -347,20 +341,16 @@ namespace XIVAICompanion
 
                     if (string.IsNullOrWhiteSpace(args))
                     {
-                        configuration.OocMode = !configuration.OocMode;
-                        configuration.Save();
-                        _oocModeBuffer = configuration.OocMode;
-                        PrintSystemMessage(configuration.OocMode
+                        _chatOocMode = !_chatOocMode;
+                        PrintSystemMessage(_chatOocMode
                             ? $"{_aiNameBuffer}>> OOC mode is now enabled."
                             : $"{_aiNameBuffer}>> OOC mode is now disabled.");
                     }
                     else if (args.Equals("on", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!configuration.OocMode)
+                        if (!_chatOocMode)
                         {
-                            configuration.OocMode = true;
-                            configuration.Save();
-                            _oocModeBuffer = true;
+                            _chatOocMode = true;
                             PrintSystemMessage($"{_aiNameBuffer}>> OOC mode is now enabled.");
                         }
                         else
@@ -370,11 +360,9 @@ namespace XIVAICompanion
                     }
                     else if (args.Equals("off", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (configuration.OocMode)
+                        if (_chatOocMode)
                         {
-                            configuration.OocMode = false;
-                            configuration.Save();
-                            _oocModeBuffer = false;
+                            _chatOocMode = false;
                             PrintSystemMessage($"{_aiNameBuffer}>> OOC mode is now disabled.");
                         }
                         else

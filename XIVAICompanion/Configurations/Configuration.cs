@@ -49,8 +49,6 @@ namespace XIVAICompanion.Configurations
         // Mode Toggles
         public bool SearchMode { get; set; } = false;
         public bool ThinkMode { get; set; } = false;
-        public bool FreshMode { get; set; } = false;
-        public bool OocMode { get; set; } = false;
 
         public bool IsDevModeEnabled { get; set; } = false;
 
