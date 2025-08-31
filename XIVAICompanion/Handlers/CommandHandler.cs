@@ -78,8 +78,8 @@ namespace XIVAICompanion
                     PrintSystemMessage($"{_aiNameBuffer}>> Conversation history has been cleared.");
                     break;
 
-                case "/aicontext":
-                    bool previousState = configuration.EnableConversationHistory;
+                case "/aihistory":
+                    bool previousHistoryState = configuration.EnableConversationHistory;
                     if (args.Equals("on", StringComparison.OrdinalIgnoreCase))
                         configuration.EnableConversationHistory = true;
                     else if (args.Equals("off", StringComparison.OrdinalIgnoreCase))
@@ -87,13 +87,32 @@ namespace XIVAICompanion
                     else
                         configuration.EnableConversationHistory = !configuration.EnableConversationHistory;
 
-                    if (previousState != configuration.EnableConversationHistory)
+                    if (previousHistoryState != configuration.EnableConversationHistory)
                     {
                         configuration.Save();
                         _enableHistoryBuffer = configuration.EnableConversationHistory;
                         PrintSystemMessage(configuration.EnableConversationHistory
                             ? $"{_aiNameBuffer}>> Conversation history is now enabled."
                             : $"{_aiNameBuffer}>> Conversation history is now disabled.");
+                    }
+                    break;
+
+                case "/aicontext":
+                    bool previousContextState = configuration.EnableInGameContext;
+                    if (args.Equals("on", StringComparison.OrdinalIgnoreCase))
+                        configuration.EnableInGameContext = true;
+                    else if (args.Equals("off", StringComparison.OrdinalIgnoreCase))
+                        configuration.EnableInGameContext = false;
+                    else
+                        configuration.EnableInGameContext = !configuration.EnableInGameContext;
+
+                    if (previousContextState != configuration.EnableInGameContext)
+                    {
+                        configuration.Save();
+                        _enableInGameContextBuffer = configuration.EnableInGameContext;
+                        PrintSystemMessage(configuration.EnableInGameContext
+                            ? $"{_aiNameBuffer}>> In-game context is now enabled."
+                            : $"{_aiNameBuffer}>> In-game context is now disabled.");
                     }
                     break;
 
@@ -445,8 +464,9 @@ namespace XIVAICompanion
                     PrintSystemMessage("/aicfg - Opens the configuration window.");
                     PrintSystemMessage("/aiset <profile> - Changes the current AI persona to a saved profile.");
                     PrintSystemMessage("/aichat - Opens the dedicated chat window.");
-                    PrintSystemMessage("/aicontext <on|off> - Enables or disables conversation memory.");
-                    PrintSystemMessage("/aiclear - Clears the current conversation memory.");
+                    PrintSystemMessage("/aihistory <on|off> - Enables or disables conversation history.");
+                    PrintSystemMessage("/aiclear - Clears the current conversation history.");
+                    PrintSystemMessage("/aicontext <on|off> - Enables or disables in-game context.");
                     PrintSystemMessage("/aisummon <profile> - Summon a custom NPC, configure in profile.");
                     break;
 

@@ -173,6 +173,19 @@ namespace XIVAICompanion
             ImGui.InputTextMultiline("##systemprompt", ref _systemPromptBuffer, 8192, new System.Numerics.Vector2(810, 250));
 
             ImGui.Spacing();
+            if (ImGui.SliderFloat("Temperature", ref _temperatureBuffer, 0.0f, 2.0f, "%.2f"))
+            {
+                _temperatureBuffer = Math.Clamp(_temperatureBuffer, 0.0f, 2.0f);
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Controls the randomness/creativity of AI responses.\n" +
+                                 "0.0 = Very focused and deterministic\n" +
+                                 "1.0 = Balanced (default)\n" +
+                                 "2.0 = Very creative and unpredictable");
+            }
+
+            ImGui.Spacing();
 
             ImGui.Text("Custom NPC Companion Settings:");
 
@@ -370,19 +383,48 @@ namespace XIVAICompanion
                 }
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(600.0f);
-                ImGui.Checkbox("Auto Model Fallback", ref _enableAutoFallbackBuffer);
+                ImGui.BeginDisabled(!_enableHistoryBuffer);
+                ImGui.SetNextItemWidth(80);
+                if (ImGui.InputInt("History Limit", ref _conversationHistoryLimitBuffer))
+                {
+                    if (_conversationHistoryLimitBuffer < 0)
+                    {
+                        _conversationHistoryLimitBuffer = 0;
+                    }
+                    else if (_conversationHistoryLimitBuffer > 100)
+                    {
+                        _conversationHistoryLimitBuffer = 100;
+                    }
+                }
                 if (ImGui.IsItemHovered())
                 {
-                    ImGui.SetTooltip("If an API request fails (e.g., due to rate limits or a temporary issue),\n" +
-                                     "the plugin will automatically and silently try the other available models.\n" +
-                                     "It will only show an error if all models fail.");
+                    ImGui.SetTooltip("Number of conversation exchanges to remember (0 = unlimited).\n" +
+                                        "Each exchange includes your message and AI's response.");
                 }
+                ImGui.EndDisabled();
 
                 ImGui.Checkbox("Custom Chat Color", ref _useCustomColorsBuffer);
                 if (_useCustomColorsBuffer)
                 {
                     ImGui.SameLine();
                     ImGui.ColorEdit4("Text Color", ref _foregroundColorBuffer, ImGuiColorEditFlags.NoInputs);
+                }
+                ImGui.SameLine();
+                ImGui.SetCursorPosX(380.0f);
+                ImGui.Checkbox("Enable In-game Context", ref _enableInGameContextBuffer);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Enables AI to use some in-game context as conversation's context.\n" +
+                                     "For example: player's race, gender, level, location, weather information, etc.");
+                }
+                ImGui.SameLine();
+                ImGui.SetCursorPosX(600.0f);
+                ImGui.Checkbox("Auto Model Fallback", ref _enableAutoFallbackBuffer);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("If an API request fails (e.g., due to rate limits or a temporary issue),\n" +
+                                     "the plugin will automatically and silently try the other available models.\n" +
+                                     "It will only show an error if all models fail.");
                 }
 
                 ImGui.TreePop();
@@ -426,7 +468,8 @@ namespace XIVAICompanion
                 LetSystemPromptHandleName = configuration.LetSystemPromptHandleAIName,
                 Mode = configuration.AddressingMode,
                 CustomUser = configuration.CustomUserName,
-                Prompt = configuration.SystemPrompt
+                Prompt = configuration.SystemPrompt,
+                Temperature = configuration.Temperature
             };
 
             if (oldPersonaState.Name != _aiNameBuffer)
@@ -452,6 +495,7 @@ namespace XIVAICompanion
             }
             configuration.CustomUserName = _customUserNameBuffer;
             configuration.SystemPrompt = _systemPromptBuffer;
+            configuration.Temperature = _temperatureBuffer;
             configuration.MinionToReplace = _minionToReplaceBuffer;
             configuration.NpcGlamourerDesignGuid = _npcGlamourerDesignGuidBuffer;
             configuration.ShowPrompt = _showPromptBuffer;
@@ -464,9 +508,11 @@ namespace XIVAICompanion
             }
             configuration.LoginGreetingPrompt = _loginGreetingPromptBuffer;
             configuration.EnableConversationHistory = _enableHistoryBuffer;
+            configuration.ConversationHistoryLimit = _conversationHistoryLimitBuffer;
             configuration.EnableAutoFallback = _enableAutoFallbackBuffer;
             configuration.UseCustomColors = _useCustomColorsBuffer;
             configuration.ForegroundColor = _foregroundColorBuffer;
+            configuration.EnableInGameContext = _enableInGameContextBuffer;
 
             configuration.Save();
 
@@ -474,7 +520,8 @@ namespace XIVAICompanion
                                   oldPersonaState.LetSystemPromptHandleName != configuration.LetSystemPromptHandleAIName ||
                                   oldPersonaState.Mode != configuration.AddressingMode ||
                                   oldPersonaState.CustomUser != configuration.CustomUserName ||
-                                  oldPersonaState.Prompt != configuration.SystemPrompt;
+                                  oldPersonaState.Prompt != configuration.SystemPrompt ||
+                                  Math.Abs(oldPersonaState.Temperature - configuration.Temperature) > 0.001f;
 
             if (!string.IsNullOrEmpty(configuration.MinionToReplace) && !string.IsNullOrEmpty(configuration.AIName))
             {

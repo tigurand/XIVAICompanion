@@ -1,12 +1,42 @@
 ﻿using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace XIVAICompanion
 {
     public partial class AICompanionPlugin
     {
+        private static readonly HashSet<XivChatType> AllowedRpAndListenerChatTypes = new HashSet<XivChatType>
+        {
+            XivChatType.Say,
+            XivChatType.Party,
+            XivChatType.Alliance,
+            XivChatType.TellIncoming,
+            XivChatType.Shout,
+            XivChatType.Yell,
+            XivChatType.FreeCompany,
+            XivChatType.CrossParty,
+            XivChatType.NoviceNetwork,
+            XivChatType.PvPTeam,
+            XivChatType.Ls1,
+            XivChatType.Ls2,
+            XivChatType.Ls3,
+            XivChatType.Ls4,
+            XivChatType.Ls5,
+            XivChatType.Ls6,
+            XivChatType.Ls7,
+            XivChatType.Ls8,
+            XivChatType.CrossLinkShell1,
+            XivChatType.CrossLinkShell2,
+            XivChatType.CrossLinkShell3,
+            XivChatType.CrossLinkShell4,
+            XivChatType.CrossLinkShell5,
+            XivChatType.CrossLinkShell6,
+            XivChatType.CrossLinkShell7,
+            XivChatType.CrossLinkShell8
+        };
         private string ParsePlayerNameFromRaw(string rawSender)
         {
             if (string.IsNullOrEmpty(rawSender)) return string.Empty;
@@ -43,10 +73,12 @@ namespace XIVAICompanion
 
         private void OnChatMessage(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
         {
+            if (!AllowedRpAndListenerChatTypes.Contains(type)) return;
+
             bool isTellReply = _autoReplyToAllTellsBuffer && type == XivChatType.TellIncoming;
             bool isOpenListenerReply = _openListenerModeBuffer && IsOpenListenerChannelEnabled(type);
 
-            if (_isAutoRpRunning && _isDevModeEnabled && (isTellReply || isOpenListenerReply))
+            if (_isAutoRpRunning && (isOpenListenerReply || (isTellReply && _isDevModeEnabled)))
             {
                 if (sender.TextValue.StartsWith("[CT]")) return;
                 if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;

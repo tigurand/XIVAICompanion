@@ -15,8 +15,8 @@ namespace XIVAICompanion
         {
             if (!_drawAutoRpWindow) return;
 
-            ImGui.SetNextWindowSizeConstraints(new Vector2(480, 440), new Vector2(9999, 9999));
-            ImGui.SetNextWindowSize(new Vector2(480, 440), ImGuiCond.FirstUseEver);
+            ImGui.SetNextWindowSizeConstraints(new Vector2(480, 468), new Vector2(9999, 9999));
+            ImGui.SetNextWindowSize(new Vector2(480, 468), ImGuiCond.FirstUseEver);
             if (ImGui.Begin("Auto Role-Play", ref _drawAutoRpWindow))
             {
                 if (_isAutoRpRunning)
@@ -103,6 +103,13 @@ namespace XIVAICompanion
                     configuration.AutoRpConfig.AutoTarget = _autoRpAutoTargetBuffer;
                     configuration.Save();
                 }
+
+                if (ImGui.Checkbox("Open Listener Mode", ref _openListenerModeBuffer))
+                {
+                    configuration.AutoRpConfig.IsOpenListenerModeEnabled = _openListenerModeBuffer;
+                    configuration.Save();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY message in the selected channels and respond.\nThis bypasses the main 'Target Player Name' logic.");
 
                 ImGui.Spacing();
                 ImGui.Separator();
@@ -278,13 +285,6 @@ namespace XIVAICompanion
                         configuration.Save();
                     }
                     if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY incoming tell from ANY player and respond.\nThis bypasses the main 'Target Player Name' logic.");
-
-                    if (ImGui.Checkbox("[DEV] Open Listener Mode", ref _openListenerModeBuffer))
-                    {
-                        configuration.AutoRpConfig.IsOpenListenerModeEnabled = _openListenerModeBuffer;
-                        configuration.Save();
-                    }
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY message in the selected channels and respond.\nThis bypasses the main 'Target Player Name' logic.");
                 }
             }
             ImGui.End();

@@ -50,7 +50,7 @@ namespace XIVAICompanion
                     {
                         ImGui.SetTooltip(
                             "Saves the chat log to a text file for viewing later.\n" +
-                            "This is separate from the AI's short-term memory (in the main config).\n" +
+                            "This is separate from the AI's short-term history (in the main config).\n" +
                             "Does not affect the conversation context.");
                     }
 
@@ -91,7 +91,7 @@ namespace XIVAICompanion
                     }
 
                     ImGui.SameLine();
-                    if (ImGui.Button("Open History Folder"))
+                    if (ImGui.Button("Open Logs Folder"))
                     {
                         _chatLogsFolder.Create();
                         Util.OpenLink(_chatLogsFolder.FullName);

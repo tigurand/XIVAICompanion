@@ -1,12 +1,15 @@
-﻿using Dalamud.Game.Text;
+﻿using Dalamud.Game.ClientState.Objects.SubKinds;
+using Dalamud.Game.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using XIVAICompanion.Models;
+using XIVAICompanion.Utils;
 
 namespace XIVAICompanion
 {
@@ -138,10 +141,10 @@ namespace XIVAICompanion
             string finalUserPrompt = string.Empty;
             if (useWebSearch)
             {
-                finalUserPrompt = "[SYSTEM COMMAND: GOOGLE SEARCH & LANGUAGE CONTROL]\n" +
+                finalUserPrompt = "[SYSTEM COMMAND: GOOGLE SEARCH]\n" +
                     "1.  **PRIMARY DIRECTIVE:** Check if Google Search tool is needed to answer the *entire* User Message.\n" +
                     "2.  **SECONDARY DIRECTIVE:** If needed, immediately use the Google Search tool to answer the *entire* User Message.\n" +
-                    "3.  **TERTIARY DIRECTIVE:** Adhere strictly to the Language Protocol.\n" +
+                    "3.  **TERTIARY DIRECTIVE:** Adhere strictly to the Language Protocol, while still being consistent with your personality.\n" +
                     "4.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.\n\n";
             }
             finalUserPrompt += $"--- User Message ---\n{userPrompt}";
@@ -173,10 +176,13 @@ namespace XIVAICompanion
                 activeHistory.Add(userTurn);
                 requestContents.Add(userTurn);
 
-                const int maxHistoryItems = 12;
-                if (activeHistory.Count > maxHistoryItems)
+                if (configuration.ConversationHistoryLimit > 0)
                 {
-                    activeHistory.RemoveRange(2, activeHistory.Count - maxHistoryItems);
+                    int maxHistoryItems = (configuration.ConversationHistoryLimit * 2) + 2;
+                    if (activeHistory.Count > maxHistoryItems)
+                    {
+                        activeHistory.RemoveRange(2, activeHistory.Count - maxHistoryItems);
+                    }
                 }
             }
             else
@@ -196,7 +202,7 @@ namespace XIVAICompanion
                 GenerationConfig = new GenerationConfig
                 {
                     MaxOutputTokens = responseTokensToUse,
-                    Temperature = 1.0,
+                    Temperature = configuration.Temperature,
                     ThinkingConfig = thinkingBudget.HasValue
                         ? new ThinkingConfig { ThinkingBudget = thinkingBudget.Value }
                         : null
@@ -361,6 +367,7 @@ namespace XIVAICompanion
                         {
                             infoBuilder.AppendLine($"Thinking Budget: Disabled ({thinkingBudget ?? 0})");
                         }
+                        infoBuilder.AppendLine($"Temperature: {_temperatureBuffer}");
                         infoBuilder.AppendLine($"Web Search: {useWebSearch}");
                         infoBuilder.AppendLine($"HTTP Status: {(int)response.StatusCode} - {response.StatusCode}");
                         infoBuilder.AppendLine($"Prompt Length (chars): {userPrompt.Length}");
@@ -641,6 +648,8 @@ namespace XIVAICompanion
                     infoBuilder.AppendLine($"Thinking Budget: Disabled ({thinkingBudget ?? 0})");
                 }
 
+                infoBuilder.AppendLine($"Temperature: {_temperatureBuffer}");
+
                 infoBuilder.AppendLine("--- Attempt Breakdown ---");
                 for (int i = 0; i < failedAttempts.Count; i++)
                 {
@@ -702,7 +711,58 @@ namespace XIVAICompanion
                 }
             }
 
-            return $"{basePrompt}{aiNameInstruction}{userNameInstruction}{userPersonaPrompt}";
+            string inGameContextPrompt = string.Empty;
+            if (configuration.EnableInGameContext)
+            {
+                try
+                {
+                    var contextTask = Service.Framework.RunOnFrameworkThread(() =>
+                    {
+                        IPlayerCharacter? targetPlayer = null;
+
+                        string? playerNameToFind = null;
+
+                        if (_isAutoRpRunning)
+                        {
+                            if (!string.IsNullOrEmpty(nameOverride))
+                            {
+                                playerNameToFind = nameOverride;
+                            }
+                            else if (!string.IsNullOrEmpty(_autoRpTargetNameBuffer))
+                            {
+                                playerNameToFind = _autoRpTargetNameBuffer;
+                            }
+
+                            if (!string.IsNullOrEmpty(playerNameToFind))
+                            {
+                                targetPlayer = Service.ObjectTable.OfType<IPlayerCharacter>()
+                                    .FirstOrDefault(p => p.Name.TextValue.Equals(playerNameToFind, StringComparison.OrdinalIgnoreCase));
+                            }
+                        }
+
+                        if (targetPlayer == null)
+                        {
+                            targetPlayer = Service.ClientState.LocalPlayer;
+                        }
+
+                        if (targetPlayer != null)
+                        {
+                            var playerContext = InGameContextProvider.GetPlayerContext(targetPlayer, Service.DataManager);
+                            var gameContext = InGameContextProvider.GetGameContext(Service.ClientState, Service.DataManager);
+                            return InGameContextProvider.FormatContextForPrompt(playerContext, gameContext);
+                        }
+                        return string.Empty;
+                    });
+
+                    inGameContextPrompt = contextTask.Result;
+                }
+                catch (Exception ex)
+                {
+                    Service.Log.Warning($"Failed to get in-game context: {ex.Message}");
+                }
+            }
+
+            return $"{basePrompt}{aiNameInstruction}{userNameInstruction}{inGameContextPrompt}{userPersonaPrompt}";
         }
     }
 }

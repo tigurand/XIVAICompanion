@@ -19,6 +19,7 @@ namespace XIVAICompanion.Configurations
         public int AddressingMode { get; set; } = 0;
         public string CustomUserName { get; set; } = "Adventurer";
         public string SystemPrompt { get; set; } = "";
+        public float Temperature { get; set; } = 1.0f;
         public string MinionToReplace { get; set; } = string.Empty;
         public string NpcGlamourerDesignGuid { get; set; } = string.Empty;
 
@@ -26,7 +27,9 @@ namespace XIVAICompanion.Configurations
         public bool GreetOnLogin { get; set; } = true;
         public string LoginGreetingPrompt { get; set; } = "I'm back to Eorzea, please greet me.";
         public bool EnableConversationHistory { get; set; } = true;
+        public int ConversationHistoryLimit { get; set; } = 10;
         public bool EnableAutoFallback { get; set; } = true;
+        public bool EnableInGameContext { get; set; } = true;
 
         // Chat Log Display Settings
         public bool ShowPrompt { get; set; } = true;

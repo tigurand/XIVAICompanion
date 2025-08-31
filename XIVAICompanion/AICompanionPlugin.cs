@@ -87,6 +87,7 @@ namespace XIVAICompanion
         private string _localPlayerName = string.Empty;
         private string _customUserNameBuffer = string.Empty;
         private string _systemPromptBuffer = string.Empty;
+        private float _temperatureBuffer = 1.0f;
         private string _minionToReplaceBuffer = string.Empty;
         private string _npcGlamourerDesignGuidBuffer = string.Empty;
         private List<string> _glamourerDesigns = new();
@@ -102,6 +103,7 @@ namespace XIVAICompanion
         private string _loginGreetingPromptBuffer = string.Empty;
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
+        private int _conversationHistoryLimitBuffer;
         private readonly Dictionary<string, List<Content>> _conversationCache = new();
         private readonly List<string> _conversationCacheLru = new();
         private const int MaxConversationCacheSize = 10;
@@ -112,6 +114,7 @@ namespace XIVAICompanion
         private bool _showAdditionalInfoBuffer;
         private bool _useCustomColorsBuffer;
         private Vector4 _foregroundColorBuffer;
+        private bool _enableInGameContextBuffer;
 
         // Chat Window Stuff
         private bool _drawChatWindow;
@@ -258,15 +261,21 @@ namespace XIVAICompanion
                 ShowInHelp = true
             });
 
+            Service.CommandManager.AddHandler("/aihistory", new CommandInfo(OnCommand)
+            {
+                HelpMessage = "Enables or disables conversation history.",
+                ShowInHelp = true
+            });
+
             Service.CommandManager.AddHandler("/aiclear", new CommandInfo(OnCommand)
             {
-                HelpMessage = "Clears the current conversation memory.",
+                HelpMessage = "Clears the current conversation history.",
                 ShowInHelp = true
             });
 
             Service.CommandManager.AddHandler("/aicontext", new CommandInfo(OnCommand)
             {
-                HelpMessage = "Enables or disables conversation memory.",
+                HelpMessage = "Enables or disables in-game context.",
                 ShowInHelp = true
             });
 
@@ -564,6 +573,7 @@ namespace XIVAICompanion
             _addressingModeBuffer = configuration.AddressingMode;
             _customUserNameBuffer = configuration.CustomUserName;
             _systemPromptBuffer = configuration.SystemPrompt;
+            _temperatureBuffer = configuration.Temperature;
             _minionToReplaceBuffer = configuration.MinionToReplace;
             _npcGlamourerDesignGuidBuffer = configuration.NpcGlamourerDesignGuid;
             _showPromptBuffer = configuration.ShowPrompt;
@@ -572,9 +582,11 @@ namespace XIVAICompanion
             _greetOnLoginBuffer = configuration.GreetOnLogin;
             _loginGreetingPromptBuffer = configuration.LoginGreetingPrompt;
             _enableHistoryBuffer = configuration.EnableConversationHistory;
+            _conversationHistoryLimitBuffer = configuration.ConversationHistoryLimit;
             _enableAutoFallbackBuffer = configuration.EnableAutoFallback;
             _useCustomColorsBuffer = configuration.UseCustomColors;
             _foregroundColorBuffer = configuration.ForegroundColor;
+            _enableInGameContextBuffer = configuration.EnableInGameContext;
 
             _saveChatToFileBuffer = configuration.SaveChatHistoryToFile;
             _sessionsToLoadBuffer = configuration.SessionsToLoad;
@@ -612,6 +624,7 @@ namespace XIVAICompanion
                 _addressingModeBuffer = defaultPersona.AddressingMode;
                 _customUserNameBuffer = defaultPersona.CustomUserName;
                 _systemPromptBuffer = defaultPersona.SystemPrompt;
+                _temperatureBuffer = defaultPersona.Temperature;
                 _minionToReplaceBuffer = defaultPersona.MinionToReplace;
                 _npcGlamourerDesignGuidBuffer = defaultPersona.NpcGlamourerDesignGuid;
 
@@ -638,6 +651,7 @@ namespace XIVAICompanion
                     _addressingModeBuffer = persona.AddressingMode;
                     _customUserNameBuffer = persona.CustomUserName;
                     _systemPromptBuffer = persona.SystemPrompt;
+                    _temperatureBuffer = persona.Temperature;
                     _minionToReplaceBuffer = persona.MinionToReplace;
                     _npcGlamourerDesignGuidBuffer = persona.NpcGlamourerDesignGuid;
 
@@ -661,6 +675,7 @@ namespace XIVAICompanion
                 AddressingMode = _addressingModeBuffer,
                 CustomUserName = string.IsNullOrWhiteSpace(_customUserNameBuffer) ? "Adventurer" : _customUserNameBuffer,
                 SystemPrompt = _systemPromptBuffer,
+                Temperature = _temperatureBuffer,
                 MinionToReplace = _minionToReplaceBuffer,
                 NpcGlamourerDesignGuid = _npcGlamourerDesignGuidBuffer
             };
@@ -801,6 +816,7 @@ namespace XIVAICompanion
         public void Dispose()
         {
             RevertTrackedMinion();
+            SaveCurrentSessionLog();
 
             _emoteMimickingManager?.Dispose();
             _minionNamingManager?.Dispose();
@@ -811,6 +827,7 @@ namespace XIVAICompanion
             Service.CommandManager.RemoveHandler("/aiset");
             Service.CommandManager.RemoveHandler("/aichat");
             Service.CommandManager.RemoveHandler("/aiclear");
+            Service.CommandManager.RemoveHandler("/aihistory");
             Service.CommandManager.RemoveHandler("/aicontext");
             Service.CommandManager.RemoveHandler("/aisummon");
             Service.CommandManager.RemoveHandler("/aisearch");
@@ -836,8 +853,6 @@ namespace XIVAICompanion
             _drawConfigWindow = false;
             _drawChatWindow = false;
             _drawAutoRpWindow = false;
-
-            SaveCurrentSessionLog();
 
             Service.PluginInterface.UiBuilder.DisableAutomaticUiHide = false;
             Service.PluginInterface.UiBuilder.DisableCutsceneUiHide = false;
