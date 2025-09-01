@@ -30,6 +30,10 @@ namespace XIVAICompanion
                 _selectedPersonaIndex = 0;
                 _saveAsNameBuffer = configuration.AIName;
             }
+
+            _glamourerDesignFilter = string.Empty;
+            _personaFileFilter = string.Empty;
+
             _drawConfigWindow = true;
             _glamourerManager.RecheckApiAvailability();
             UpdateGlamourerDesigns();
@@ -197,19 +201,53 @@ namespace XIVAICompanion
 
             if (_glamourerManager.IsApiAvailable)
             {
-                if (ImGui.Combo("Glamourer Design", ref _selectedGlamourerDesignIndex, _glamourerDesigns.ToArray(), _glamourerDesigns.Count))
+                string currentDesignName = "";
+                if (_selectedGlamourerDesignIndex >= 0 && _selectedGlamourerDesignIndex < _glamourerDesigns.Count)
                 {
-                    if (_selectedGlamourerDesignIndex > 0 && _selectedGlamourerDesignIndex < _glamourerDesigns.Count)
+                    currentDesignName = _glamourerDesigns[_selectedGlamourerDesignIndex];
+                }
+
+                ImGui.Text("Glamourer Design");
+                ImGui.SetNextItemWidth(350);
+
+                if (ImGui.BeginCombo("##GlamourerDesignCombo", string.IsNullOrEmpty(_glamourerDesignFilter) ? currentDesignName : _glamourerDesignFilter))
+                {
+                    ImGui.SetNextItemWidth(-1);
+                    if (ImGui.InputTextWithHint("##GlamourerSearch", "Type to search...", ref _glamourerDesignFilter, 256))
                     {
-                        var designs = _glamourerManager.GetDesigns();
-                        var selectedName = _glamourerDesigns[_selectedGlamourerDesignIndex];
-                        var designEntry = designs.FirstOrDefault(kvp => kvp.Value == selectedName);
-                        _npcGlamourerDesignGuidBuffer = designEntry.Key.ToString();
+                        // Filter updated, no need to do anything special here
                     }
-                    else
+
+                    var filteredDesigns = GetFilteredGlamourerDesigns();
+
+                    foreach (var design in filteredDesigns)
                     {
-                        _npcGlamourerDesignGuidBuffer = Guid.Empty.ToString();
+                        var isSelected = design == currentDesignName;
+                        if (ImGui.Selectable(design, isSelected))
+                        {
+                            _selectedGlamourerDesignIndex = _glamourerDesigns.IndexOf(design);
+                            _glamourerDesignFilter = "";
+
+                            if (_selectedGlamourerDesignIndex > 0 && _selectedGlamourerDesignIndex < _glamourerDesigns.Count)
+                            {
+                                var designs = _glamourerManager.GetDesigns();
+                                var selectedName = _glamourerDesigns[_selectedGlamourerDesignIndex];
+                                var designEntry = designs.FirstOrDefault(kvp => kvp.Value == selectedName);
+                                _npcGlamourerDesignGuidBuffer = designEntry.Key.ToString();
+                            }
+                            else
+                            {
+                                _npcGlamourerDesignGuidBuffer = Guid.Empty.ToString();
+                            }
+                        }
+
+                        if (isSelected)
+                        {
+                            ImGui.SetItemDefaultFocus();
+                        }
                     }
+
+                    ImGui.EndCombo();
                 }
 
                 if (ImGui.IsItemClicked())
@@ -220,8 +258,11 @@ namespace XIVAICompanion
             }
             else
             {
+                ImGui.Text("Glamourer Design");
+                ImGui.SetNextItemWidth(350);
                 ImGui.BeginDisabled();
-                ImGui.Combo("Glamourer Design", ref _selectedGlamourerDesignIndex, new[] { "Glamourer not available" }, 1);
+                ImGui.BeginCombo("##GlamourerDesignCombo", "Glamourer not available");
+                ImGui.EndCombo();
                 ImGui.EndDisabled();
             }
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("The saved Glamourer design to apply to the minion.");
@@ -229,18 +270,51 @@ namespace XIVAICompanion
             ImGui.Separator();
             ImGui.Text("Persona Profiles:");
             ImGui.SetNextItemWidth(230);
-            if (ImGui.Combo("##personaselect", ref _selectedPersonaIndex, _personaFiles.ToArray(), _personaFiles.Count))
+
+            string currentPersonaName = "";
+            if (_selectedPersonaIndex >= 0 && _selectedPersonaIndex < _personaFiles.Count)
             {
-                if (_personaFiles[_selectedPersonaIndex] == "<New Profile>")
-                {
-                    _saveAsNameBuffer = _aiNameBuffer;
-                }
-                else
-                {
-                    _saveAsNameBuffer = _personaFiles[_selectedPersonaIndex];
-                }
+                currentPersonaName = _personaFiles[_selectedPersonaIndex];
             }
-            if (ImGui.IsItemClicked())
+
+            if (ImGui.BeginCombo("##PersonaSelectCombo", string.IsNullOrEmpty(_personaFileFilter) ? currentPersonaName : _personaFileFilter))
+            {
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.InputTextWithHint("##PersonaSearch", "Type to search...", ref _personaFileFilter, 256))
+                {
+                    // Filter updated, no need to do anything special here
+                }
+
+                var filteredPersonas = GetFilteredPersonaFiles();
+
+                foreach (var persona in filteredPersonas)
+                {
+                    var isSelected = persona == currentPersonaName;
+                    if (ImGui.Selectable(persona, isSelected))
+                    {
+                        _selectedPersonaIndex = _personaFiles.IndexOf(persona);
+                        _personaFileFilter = "";
+
+                        if (_personaFiles[_selectedPersonaIndex] == "<New Profile>")
+                        {
+                            _saveAsNameBuffer = _aiNameBuffer;
+                        }
+                        else
+                        {
+                            _saveAsNameBuffer = _personaFiles[_selectedPersonaIndex];
+                        }
+                    }
+
+                    if (isSelected)
+                    {
+                        ImGui.SetItemDefaultFocus();
+                    }
+                }
+
+                ImGui.EndCombo();
+            }
+
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
             {
                 LoadAvailablePersonas();
             }
@@ -456,6 +530,8 @@ namespace XIVAICompanion
 
             if (wasVisible && !_drawConfigWindow)
             {
+                _glamourerDesignFilter = string.Empty;
+                _personaFileFilter = string.Empty;
                 LoadConfigIntoBuffers();
             }
         }

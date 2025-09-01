@@ -92,9 +92,11 @@ namespace XIVAICompanion
         private string _npcGlamourerDesignGuidBuffer = string.Empty;
         private List<string> _glamourerDesigns = new();
         private int _selectedGlamourerDesignIndex = -1;
+        private string _glamourerDesignFilter = string.Empty;
         private readonly DirectoryInfo _personaFolder;
         private List<string> _personaFiles = new();
         private int _selectedPersonaIndex = -1;
+        private string _personaFileFilter = string.Empty;
         private string _saveAsNameBuffer = string.Empty;
         private bool _showOverwriteConfirmation = false;
         private bool _showInvalidNameConfirmation = false;
@@ -608,6 +610,28 @@ namespace XIVAICompanion
 
             _personaFiles = new List<string> { "<New Profile>" };
             _personaFiles.AddRange(realFiles);
+        }
+
+        private List<string> GetFilteredGlamourerDesigns()
+        {
+            if (string.IsNullOrWhiteSpace(_glamourerDesignFilter))
+            {
+                return _glamourerDesigns;
+            }
+
+            var filter = _glamourerDesignFilter.ToLowerInvariant();
+            return _glamourerDesigns.Where(design => design.ToLowerInvariant().Contains(filter)).ToList();
+        }
+
+        private List<string> GetFilteredPersonaFiles()
+        {
+            if (string.IsNullOrWhiteSpace(_personaFileFilter))
+            {
+                return _personaFiles;
+            }
+
+            var filter = _personaFileFilter.ToLowerInvariant();
+            return _personaFiles.Where(file => file.ToLowerInvariant().Contains(filter)).ToList();
         }
 
         private void LoadPersona(string profileName)
