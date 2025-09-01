@@ -36,6 +36,7 @@ namespace XIVAICompanion.Models
     {
         [JsonProperty("thinkingBudget")]
         public int ThinkingBudget { get; set; }
+        [JsonProperty("includeThoughts")] public bool IncludeThoughts { get; set; }
     }
     public class Tool
     {

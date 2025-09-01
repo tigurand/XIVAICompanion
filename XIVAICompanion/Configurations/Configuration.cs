@@ -33,6 +33,7 @@ namespace XIVAICompanion.Configurations
 
         // Chat Log Display Settings
         public bool ShowPrompt { get; set; } = true;
+        public bool ShowThoughts { get; set; } = false;
         public bool RemoveLineBreaks { get; set; } = true;
         public bool ShowAdditionalInfo { get; set; } = false;
         public bool UseCustomColors { get; set; } = false;

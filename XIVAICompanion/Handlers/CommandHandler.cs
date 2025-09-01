@@ -174,11 +174,6 @@ namespace XIVAICompanion
                     {
                         if (!configuration.SearchMode)
                         {
-                            if (configuration.ThinkMode)
-                            {
-                                configuration.ThinkMode = false;
-                                _thinkModeBuffer = false;
-                            }
                             configuration.SearchMode = true;
                             _searchModeBuffer = true;
                             PrintSystemMessage($"{_aiNameBuffer}>> Search mode is now enabled.");
@@ -195,11 +190,6 @@ namespace XIVAICompanion
                     {
                         if (!configuration.SearchMode)
                         {
-                            if (configuration.ThinkMode)
-                            {
-                                configuration.ThinkMode = false;
-                                _thinkModeBuffer = false;
-                            }
                             configuration.SearchMode = true;
                             _searchModeBuffer = true;
                             configuration.Save();
@@ -236,11 +226,6 @@ namespace XIVAICompanion
                     {
                         if (!configuration.ThinkMode)
                         {
-                            if (configuration.SearchMode)
-                            {
-                                configuration.SearchMode = false;
-                                _searchModeBuffer = false;
-                            }
                             configuration.ThinkMode = true;
                             _thinkModeBuffer = true;
                             PrintSystemMessage($"{_aiNameBuffer}>> Think mode is now enabled.");
@@ -257,11 +242,6 @@ namespace XIVAICompanion
                     {
                         if (!configuration.ThinkMode)
                         {
-                            if (configuration.SearchMode)
-                            {
-                                configuration.SearchMode = false;
-                                _searchModeBuffer = false;
-                            }
                             configuration.ThinkMode = true;
                             _thinkModeBuffer = true;
                             configuration.Save();
@@ -426,19 +406,14 @@ namespace XIVAICompanion
                     break;
 
                 case "/ainormal":
-                    if (configuration.SearchMode || configuration.ThinkMode)
-                    {
-                        configuration.SearchMode = false;
-                        configuration.ThinkMode = false;
-                        configuration.Save();
-                        _searchModeBuffer = false;
-                        _thinkModeBuffer = false;
-                        PrintSystemMessage($"{_aiNameBuffer}>> Normal mode is now enabled.");
-                    }
-                    else
-                    {
-                        PrintSystemMessage($"{_aiNameBuffer}>> Already in normal mode.");
-                    }
+                    configuration.SearchMode = false;
+                    configuration.ThinkMode = false;
+                    configuration.Save();
+                    _searchModeBuffer = false;
+                    _thinkModeBuffer = false;
+                    _chatFreshMode = false;
+                    _chatOocMode = false;
+                    PrintSystemMessage($"{_aiNameBuffer}>> Disabled all modes.");
                     break;
 
                 case "/aihelp":

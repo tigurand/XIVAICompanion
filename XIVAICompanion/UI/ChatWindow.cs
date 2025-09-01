@@ -208,37 +208,34 @@ namespace XIVAICompanion
                 ImGui.Text("Mode:");
                 ImGui.SameLine();
 
-                _chatModeSelection = configuration.SearchMode ? 1 : (configuration.ThinkMode ? 2 : 0);
+                _searchModeBuffer = configuration.SearchMode;
+                _thinkModeBuffer = configuration.ThinkMode;
 
-                int previousModeSelection = _chatModeSelection;
+                bool previousSearchMode = _searchModeBuffer;
+                bool previousThinkMode = _thinkModeBuffer;
 
-                ImGui.RadioButton("Normal", ref _chatModeSelection, 0);
+                ImGui.Checkbox("Web Search", ref _searchModeBuffer);
                 ImGui.SameLine();
-                ImGui.RadioButton("Web Search", ref _chatModeSelection, 1);
-                ImGui.SameLine();
-                ImGui.RadioButton("Think", ref _chatModeSelection, 2);
-                ImGui.SameLine();
-                ImGui.Spacing();
-                ImGui.SameLine();
-                ImGui.Spacing();
+                ImGui.Checkbox("Think", ref _thinkModeBuffer);
                 ImGui.SameLine();
                 ImGui.Checkbox("Fresh", ref _chatFreshMode);
 
                 if (_isAutoRpRunning)
                 {
                     ImGui.SameLine();
-                    ImGui.Spacing();
-                    ImGui.SameLine();
                     ImGui.Checkbox("OOC", ref _chatOocMode);
                 }
 
-                if (previousModeSelection != _chatModeSelection)
+                if (previousSearchMode != _searchModeBuffer)
                 {
-                    configuration.SearchMode = _chatModeSelection == 1;
-                    configuration.ThinkMode = _chatModeSelection == 2;
+                    configuration.SearchMode = _searchModeBuffer;
                     configuration.Save();
-                    _searchModeBuffer = configuration.SearchMode;
-                    _thinkModeBuffer = configuration.ThinkMode;
+                }
+
+                if (previousThinkMode != _thinkModeBuffer)
+                {
+                    configuration.ThinkMode = _thinkModeBuffer;
+                    configuration.Save();
                 }
 
                 ImGui.Spacing();

@@ -26,7 +26,7 @@ namespace XIVAICompanion
             var failedAttempts = new List<(string Model, ApiResult Result)>();
             int initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
 
-            bool isThink = configuration.ThinkMode || tempThinkMode;
+            bool isThink = (configuration.ThinkMode || tempThinkMode) && !isGreeting;
             if (isThink)
                 initialModelIndex = thinkingModelIndex;
             else if (isGreeting)
@@ -105,7 +105,7 @@ namespace XIVAICompanion
                                                 List<Content>? conversationHistory = null, bool isGreeting = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
         {
             int responseTokensToUse = configuration.MaxTokens;
-            int? thinkingBudget = minimumThinkingBudget;
+            int? thinkingBudget = defaultThinkingBudget;
             string userPrompt;
             bool useWebSearch = false;
             string currentPrompt = input.Replace('　', ' ').Trim();
@@ -120,23 +120,10 @@ namespace XIVAICompanion
                 // Fresh mode is handled by isStateless parameter
             }
 
-            if (isSearch)
-            {
-                userPrompt = currentPrompt;
-                responseTokensToUse = _maxTokensBuffer;
-                thinkingBudget = _maxTokensBuffer;
-                useWebSearch = true;
-            }
-            else if (isThink)
-            {
-                userPrompt = currentPrompt;
-                responseTokensToUse = maxResponseTokens;
-                thinkingBudget = maxResponseTokens;
-            }
-            else
-            {
-                userPrompt = currentPrompt;
-            }
+            if (isSearch) useWebSearch = true;
+            if (isThink) thinkingBudget = configuration.MaxTokens; ;
+
+            userPrompt = currentPrompt;
 
             string finalUserPrompt = string.Empty;
             if (useWebSearch)
@@ -204,7 +191,7 @@ namespace XIVAICompanion
                     MaxOutputTokens = responseTokensToUse,
                     Temperature = configuration.Temperature,
                     ThinkingConfig = thinkingBudget.HasValue
-                        ? new ThinkingConfig { ThinkingBudget = thinkingBudget.Value }
+                        ? new ThinkingConfig { ThinkingBudget = thinkingBudget.Value, IncludeThoughts = configuration.ShowThoughts }
                         : null
                 },
                 SafetySettings = new List<SafetySetting>
@@ -247,7 +234,22 @@ namespace XIVAICompanion
                 var responseBody = await response.Content.ReadAsStringAsync();
                 var responseJson = JObject.Parse(responseBody);
 
-                string? text = (string?)responseJson.SelectToken("candidates[0].content.parts[0].text");
+                var allText = new List<string>();
+                var parts = responseJson.SelectToken("candidates[0].content.parts");
+
+                if (parts != null)
+                {
+                    foreach (var part in parts)
+                    {
+                        var partText = (string?)part.SelectToken("text");
+                        if (!string.IsNullOrEmpty(partText))
+                        {
+                            allText.Add(partText);
+                        }
+                    }
+                }
+                string text = string.Join("\n\n", allText);
+
                 string? finishReason = (string?)responseJson.SelectToken("candidates[0].finishReason");
 
                 if (finishReason == "MAX_TOKENS")

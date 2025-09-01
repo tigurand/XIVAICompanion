@@ -102,7 +102,8 @@ namespace XIVAICompanion
             }
             if (ImGui.IsItemHovered())
             {
-                ImGui.SetTooltip("Controls the maximum length of the response from the AI.");
+                ImGui.SetTooltip("Controls the maximum length of the response from the AI.\n" +
+                                 "Also controls thinking budget on Think Mode.");
             }
             ImGui.Spacing();
             ImGui.SetNextItemWidth(303);
@@ -501,6 +502,12 @@ namespace XIVAICompanion
                                      "It will only show an error if all models fail.");
                 }
 
+                ImGui.Checkbox("Show Thoughts", ref _showThoughtsBuffer);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Show AI thoughts on answers.");
+                }
+
                 ImGui.TreePop();
             }
 
@@ -575,6 +582,7 @@ namespace XIVAICompanion
             configuration.MinionToReplace = _minionToReplaceBuffer;
             configuration.NpcGlamourerDesignGuid = _npcGlamourerDesignGuidBuffer;
             configuration.ShowPrompt = _showPromptBuffer;
+            configuration.ShowThoughts = _showThoughtsBuffer;
             configuration.RemoveLineBreaks = _removeLineBreaksBuffer;
             configuration.ShowAdditionalInfo = _showAdditionalInfoBuffer;
             configuration.GreetOnLogin = _greetOnLoginBuffer;

@@ -63,7 +63,7 @@ namespace XIVAICompanion
         private const string commandName = "/ai";
         private const int minResponseTokens = 512;
         private const int maxResponseTokens = 8192;
-        private const int minimumThinkingBudget = 512; // minResponseTokens >= minimumThinkingBudget <= maxResponseTokens
+        private const int defaultThinkingBudget = minResponseTokens;
 
         private static readonly HttpClient httpClient = new HttpClient();
 
@@ -112,6 +112,7 @@ namespace XIVAICompanion
         private bool _enableAutoFallbackBuffer;
 
         private bool _showPromptBuffer;
+        private bool _showThoughtsBuffer;
         private bool _removeLineBreaksBuffer;
         private bool _showAdditionalInfoBuffer;
         private bool _useCustomColorsBuffer;
@@ -145,7 +146,6 @@ namespace XIVAICompanion
         private bool _tempFreshMode = false;
         private bool _tempOocMode = false;
 
-        private int _chatModeSelection = 0;
         private bool _chatFreshMode = false;
         private bool _chatOocMode = false;
 
@@ -577,6 +577,7 @@ namespace XIVAICompanion
             _minionToReplaceBuffer = configuration.MinionToReplace;
             _npcGlamourerDesignGuidBuffer = configuration.NpcGlamourerDesignGuid;
             _showPromptBuffer = configuration.ShowPrompt;
+            _showThoughtsBuffer = configuration.ShowThoughts;
             _removeLineBreaksBuffer = configuration.RemoveLineBreaks;
             _showAdditionalInfoBuffer = configuration.ShowAdditionalInfo;
             _greetOnLoginBuffer = configuration.GreetOnLogin;
