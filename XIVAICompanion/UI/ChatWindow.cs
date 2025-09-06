@@ -477,6 +477,36 @@ namespace XIVAICompanion
             }
         }
 
+        private static readonly char[] ChunkDelimiters = { ' ', '\n', '\r', '、', '。' };
+        private static readonly char[] WhitespaceDelimiters = { ' ', '\n', '\r' };
+        private static readonly char[] RetainedDelimiters = { '、', '。' };
+
+        private int FindLastDelimiterIndex(string text, int startIndex, int count)
+        {
+            int lastDelimiterIndex = -1;
+            for (int i = startIndex + count - 1; i >= startIndex; i--)
+            {
+                if (Array.IndexOf(ChunkDelimiters, text[i]) != -1)
+                {
+                    lastDelimiterIndex = i;
+                    break;
+                }
+            }
+            return lastDelimiterIndex;
+        }
+
+        private int FindLastDelimiterIndex(string text)
+        {
+            for (int i = text.Length - 1; i >= 0; i--)
+            {
+                if (Array.IndexOf(ChunkDelimiters, text[i]) != -1)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
         private IEnumerable<string> SplitIntoChunks(string text, int chunkSize)
         {
             if (string.IsNullOrEmpty(text) || text.Length <= chunkSize)
@@ -493,14 +523,22 @@ namespace XIVAICompanion
 
                 if (offset + size < text.Length)
                 {
-                    int lastSpace = text.LastIndexOf(' ', offset + size, size);
-                    if (lastSpace != -1 && lastSpace > offset)
+                    int lastDelimiter = FindLastDelimiterIndex(text, offset, size);
+                    if (lastDelimiter != -1 && lastDelimiter > offset)
                     {
-                        size = lastSpace - offset;
+                        if (Array.IndexOf(RetainedDelimiters, text[lastDelimiter]) != -1)
+                        {
+                            size = lastDelimiter - offset + 1;
+                        }
+                        else
+                        {
+                            size = lastDelimiter - offset;
+                        }
                     }
                 }
 
-                yield return text.Substring(offset, size).TrimStart();
+                string chunk = text.Substring(offset, size);
+                yield return chunk.TrimStart(WhitespaceDelimiters);
                 offset += size;
             }
         }
@@ -537,13 +575,22 @@ namespace XIVAICompanion
 
                 bool isLastChunk = (currentPos + maxCharCount) >= text.Length;
 
-                int breakPos = potentialChunk.LastIndexOf(' ');
+                int breakPos = FindLastDelimiterIndex(potentialChunk);
 
                 if (!isLastChunk && breakPos > 0)
                 {
-                    string finalChunk = potentialChunk.Substring(0, breakPos);
-                    yield return finalChunk;
-                    currentPos += finalChunk.Length;
+                    if (Array.IndexOf(RetainedDelimiters, potentialChunk[breakPos]) != -1)
+                    {
+                        string finalChunk = potentialChunk.Substring(0, breakPos + 1);
+                        yield return finalChunk;
+                        currentPos += finalChunk.Length;
+                    }
+                    else
+                    {
+                        string finalChunk = potentialChunk.Substring(0, breakPos);
+                        yield return finalChunk;
+                        currentPos += finalChunk.Length;
+                    }
                 }
                 else
                 {
@@ -551,7 +598,7 @@ namespace XIVAICompanion
                     currentPos += potentialChunk.Length;
                 }
 
-                while (currentPos < text.Length && text[currentPos] == ' ')
+                while (currentPos < text.Length && Array.IndexOf(WhitespaceDelimiters, text[currentPos]) != -1)
                 {
                     currentPos++;
                 }

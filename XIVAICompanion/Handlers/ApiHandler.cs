@@ -298,7 +298,7 @@ namespace XIVAICompanion
                     }
 
                     string finalResponse = removeLineBreaks
-                        ? sanitizedText.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ")
+                        ? sanitizedText.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ").Replace("  ", " ")
                         : sanitizedText;
 
                     _currentSessionChatLog.Add(new ChatMessage

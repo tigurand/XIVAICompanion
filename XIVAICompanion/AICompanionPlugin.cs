@@ -727,6 +727,11 @@ namespace XIVAICompanion
         {
             string processedInput = rawInput;
 
+            TimeZoneInfo localTimeZone = TimeZoneInfo.Local;
+            DateTime now = DateTime.Now;
+            bool isDst = localTimeZone.IsDaylightSavingTime(now);
+            string timeZoneInfo = $"{localTimeZone.DisplayName} - DST: {isDst}";
+
             var aliases = new Dictionary<string, string>
             {
                 // Lodestone Aliases
@@ -735,7 +740,11 @@ namespace XIVAICompanion
                 { "frlodestone", "https://fr.finalfantasyxiv.com/lodestone/" },
                 { "delodestone", "https://de.finalfantasyxiv.com/lodestone/" },
                 { "jplodestone", "https://jp.finalfantasyxiv.com/lodestone/" },
-                { "ffmaint", "https://na.finalfantasyxiv.com/lodestone/news/category/2" }
+                { "ffmaint", "https://eu.finalfantasyxiv.com/lodestone/news/category/2" },
+
+                // Other Aliases
+                { "mytime", now.ToString() },
+                { "mytimezone", timeZoneInfo }
             };
 
             foreach (var alias in aliases)
