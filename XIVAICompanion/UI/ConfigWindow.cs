@@ -609,7 +609,7 @@ namespace XIVAICompanion
 
             if (!string.IsNullOrEmpty(configuration.MinionToReplace) && !string.IsNullOrEmpty(configuration.AIName))
             {
-                _minionNamingManager.UpdateNamingConfiguration(configuration.MinionToReplace, configuration.AIName);
+                _minionNamingManager.UpdateNamingConfiguration(configuration.MinionToReplace, configuration.AIName, _glamouredMinionObjectId);
             }
             else
             {

@@ -15,6 +15,7 @@ namespace XIVAICompanion.Managers
 
         private string _currentNamedMinionName = string.Empty;
         private string _currentCustomName = string.Empty;
+        private ulong _trackedMinionObjectId = 0;
 
         public MinionNamingManager(INamePlateGui namePlateGui, IObjectTable objectTable, Configuration configuration)
         {
@@ -35,12 +36,14 @@ namespace XIVAICompanion.Managers
         /// </summary>
         /// <param name="newMinionName">The minion to name (from MinionToReplace)</param>
         /// <param name="newCustomName">The custom name to apply (from AIName)</param>
-        public void UpdateNamingConfiguration(string newMinionName, string newCustomName)
+        /// <param name="minionObjectId">The specific object ID of the player's minion to rename</param>
+        public void UpdateNamingConfiguration(string newMinionName, string newCustomName, ulong minionObjectId = 0)
         {
-            if (_currentNamedMinionName != newMinionName || _currentCustomName != newCustomName)
+            if (_currentNamedMinionName != newMinionName || _currentCustomName != newCustomName || _trackedMinionObjectId != minionObjectId)
             {
                 _currentNamedMinionName = newMinionName;
                 _currentCustomName = newCustomName;
+                _trackedMinionObjectId = minionObjectId;
 
                 _namePlateGui.RequestRedraw();
             }
@@ -53,12 +56,13 @@ namespace XIVAICompanion.Managers
         {
             _currentNamedMinionName = string.Empty;
             _currentCustomName = string.Empty;
+            _trackedMinionObjectId = 0;
             _namePlateGui.RequestRedraw();
         }
 
         private void OnNamePlateUpdate(INamePlateUpdateContext context, IReadOnlyList<INamePlateUpdateHandler> handlers)
         {
-            if (string.IsNullOrEmpty(_currentNamedMinionName) || string.IsNullOrEmpty(_currentCustomName))
+            if (string.IsNullOrEmpty(_currentNamedMinionName) || string.IsNullOrEmpty(_currentCustomName) || _trackedMinionObjectId == 0)
                 return;
 
             foreach (var handler in handlers)
@@ -67,11 +71,14 @@ namespace XIVAICompanion.Managers
                     handler.GameObject != null &&
                     handler.GameObject.ObjectKind == ObjectKind.Companion)
                 {
-                    string currentMinionName = handler.GameObject.Name.TextValue;
-
-                    if (currentMinionName.Contains(_currentNamedMinionName, StringComparison.OrdinalIgnoreCase))
+                    if (handler.GameObject.GameObjectId == _trackedMinionObjectId)
                     {
-                        handler.SetField(NamePlateStringField.Name, _currentCustomName);
+                        string currentMinionName = handler.GameObject.Name.TextValue;
+
+                        if (currentMinionName.Contains(_currentNamedMinionName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            handler.SetField(NamePlateStringField.Name, _currentCustomName);
+                        }
                     }
                 }
             }

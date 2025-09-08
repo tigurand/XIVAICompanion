@@ -222,7 +222,7 @@ namespace XIVAICompanion
 
             if (!string.IsNullOrEmpty(configuration.MinionToReplace) && !string.IsNullOrEmpty(configuration.AIName))
             {
-                _minionNamingManager.UpdateNamingConfiguration(configuration.MinionToReplace, configuration.AIName);
+                _minionNamingManager.UpdateNamingConfiguration(configuration.MinionToReplace, configuration.AIName, _glamouredMinionObjectId);
             }
 
             _personaFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "Personas"));
@@ -391,6 +391,11 @@ namespace XIVAICompanion
                             _glamouredMinionObjectId = targetCompanion.GameObjectId;
                             _lastAppliedDesignGuid = desiredDesignGuid;
                             _isWaitingForGlamourer = false;
+
+                            if (!string.IsNullOrEmpty(configuration.MinionToReplace) && !string.IsNullOrEmpty(configuration.AIName))
+                            {
+                                _minionNamingManager.UpdateNamingConfiguration(configuration.MinionToReplace, configuration.AIName, _glamouredMinionObjectId);
+                            }
                         }
                         else if (!_isWaitingForGlamourer)
                         {
@@ -427,6 +432,11 @@ namespace XIVAICompanion
                             _glamourerManager.ApplyDesign(designGuidToApply, companionToGlamour);
                             _glamouredMinionObjectId = companionToGlamour.GameObjectId;
                             _lastAppliedDesignGuid = designGuidToApply;
+
+                            if (!string.IsNullOrEmpty(configuration.MinionToReplace) && !string.IsNullOrEmpty(configuration.AIName))
+                            {
+                                _minionNamingManager.UpdateNamingConfiguration(configuration.MinionToReplace, configuration.AIName, _glamouredMinionObjectId);
+                            }
                         }
                     }
                     _isWaitingForGlamourer = false;
@@ -840,6 +850,8 @@ namespace XIVAICompanion
                 }
                 _glamouredMinionObjectId = 0;
                 _lastAppliedDesignGuid = Guid.Empty;
+
+                _minionNamingManager.ClearNaming();
             }
         }
 
