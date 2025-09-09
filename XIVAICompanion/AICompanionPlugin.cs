@@ -317,7 +317,19 @@ namespace XIVAICompanion
 
             Service.CommandManager.AddHandler("/ainormal", new CommandInfo(OnCommand)
             {
-                HelpMessage = "Turns off both search and think modes.",
+                HelpMessage = "Turns off all modes.",
+                ShowInHelp = true
+            });
+
+            Service.CommandManager.AddHandler("/aimode", new CommandInfo(OnCommand)
+            {
+                HelpMessage = "Displays current modes status.",
+                ShowInHelp = true
+            });
+
+            Service.CommandManager.AddHandler("/aialias", new CommandInfo(OnCommand)
+            {
+                HelpMessage = "Lists all available aliases.",
                 ShowInHelp = true
             });
 
@@ -877,8 +889,10 @@ namespace XIVAICompanion
             Service.CommandManager.RemoveHandler("/aifresh");
             Service.CommandManager.RemoveHandler("/aiooc");
             Service.CommandManager.RemoveHandler("/aidev");
-            Service.CommandManager.RemoveHandler("/aihelp");
             Service.CommandManager.RemoveHandler("/ainormal");
+            Service.CommandManager.RemoveHandler("/aimode");
+            Service.CommandManager.RemoveHandler("/aialias");
+            Service.CommandManager.RemoveHandler("/aihelp");
 
             Service.PluginInterface.UiBuilder.Draw -= DrawConfiguration;
             Service.PluginInterface.UiBuilder.Draw -= DrawChatWindow;

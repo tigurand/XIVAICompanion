@@ -416,6 +416,34 @@ namespace XIVAICompanion
                     PrintSystemMessage($"{_aiNameBuffer}>> Disabled all modes.");
                     break;
 
+                case "/aimode":
+                    string isSearchOn = _searchModeBuffer ? "On" : "Off";
+                    string isThinkOn = _thinkModeBuffer ? "On" : "Off";
+                    string isFreshOn = _chatFreshMode ? "On" : "Off";
+                    string isOOCOn = _chatOocMode ? "On" : "Off";
+
+                    PrintSystemMessage($"{_aiNameBuffer}>> Current mode status:");
+                    PrintSystemMessage($"Web search mode: {isSearchOn}");
+                    PrintSystemMessage($"Think mode: {isThinkOn}");
+                    PrintSystemMessage($"Fresh mode: {isFreshOn}");
+                    if (_isAutoRpRunning)
+                    {
+                        PrintSystemMessage($"OOC mode: {isOOCOn}");
+                    }
+                    break;
+
+                case "/aialias":
+                    PrintSystemMessage($"{_aiNameBuffer}>> Available aliases:");
+                    PrintSystemMessage("nalodestone: Lodestone page for NA.");
+                    PrintSystemMessage("eulodestone: Lodestone page for EU.");
+                    PrintSystemMessage("frlodestone: Lodestone page for FR.");
+                    PrintSystemMessage("delodestone: Lodestone page for DE.");
+                    PrintSystemMessage("jplodestone: Lodestone page for JP.");
+                    PrintSystemMessage("ffmaint: Lodestone maintenance page based on EU.");
+                    PrintSystemMessage("mytime: Local time.");
+                    PrintSystemMessage("mytimezone: Local time zone.");
+                    break;
+
                 case "/aihelp":
                     PrintSystemMessage("--- AI Companion Help ---");
                     PrintSystemMessage("/ai [prompt] - Sends a standard prompt to the AI.");
@@ -423,7 +451,8 @@ namespace XIVAICompanion
                     PrintSystemMessage("/aithink [prompt] - Slower, more thoughtful responses for complex questions. Can also be toggled.");
                     PrintSystemMessage("/aifresh [prompt] - Ignores conversation history for a single, clean response. Can also be toggled.");
                     PrintSystemMessage("/aiooc [prompt] - Sends a private, Out-Of-Character prompt. Only available with Auto Role-Play. Can also be toggled.");
-                    PrintSystemMessage("/ainormal - Turns off both search and think modes.");
+                    PrintSystemMessage("/ainormal - Turns off all modes.");
+                    PrintSystemMessage("/aimode - Displays current modes status");
                     PrintSystemMessage("/aicfg - Opens the configuration window.");
                     PrintSystemMessage("/aiset <profile> - Changes the current AI persona to a saved profile.");
                     PrintSystemMessage("/aichat - Opens the dedicated chat window.");
@@ -431,6 +460,7 @@ namespace XIVAICompanion
                     PrintSystemMessage("/aiclear - Clears the current conversation history.");
                     PrintSystemMessage("/aicontext <on|off> - Enables or disables in-game context.");
                     PrintSystemMessage("/aisummon <profile> - Summon a custom NPC, configure in profile.");
+                    PrintSystemMessage("/aialias - Lists all available aliases.");
                     break;
 
                 default:
