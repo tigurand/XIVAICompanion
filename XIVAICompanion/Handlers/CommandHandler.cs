@@ -1,5 +1,4 @@
-﻿using Dalamud.Game.ClientState.Objects.Enums;
-using ECommons.Automation;
+﻿using ECommons.Automation;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -539,6 +538,7 @@ namespace XIVAICompanion
         {
             LoadAvailablePersonas();
             var foundProfile = _personaFiles.FirstOrDefault(f => f.Equals(profileName, StringComparison.OrdinalIgnoreCase) && !f.Equals("<New Profile>", StringComparison.OrdinalIgnoreCase));
+            bool minionIsActive = false;
 
             if (string.IsNullOrEmpty(foundProfile))
             {
@@ -549,13 +549,12 @@ namespace XIVAICompanion
             if (profileName.Equals(configuration.AIName, StringComparison.OrdinalIgnoreCase))
             {
                 var configuredMinion = configuration.MinionToReplace;
-                bool minionIsActive = false;
 
                 if (!string.IsNullOrEmpty(configuredMinion))
                 {
                     await Service.Framework.RunOnFrameworkThread(() =>
                     {
-                        minionIsActive = Service.ObjectTable.Any(o => o.ObjectKind == ObjectKind.Companion && o.Name.TextValue.Contains(configuredMinion));
+                        minionIsActive = GetMyMinion() != null;
                     });
                 }
 
@@ -564,7 +563,7 @@ namespace XIVAICompanion
                     await Service.Framework.RunOnFrameworkThread(() =>
                     {
                         Service.Log.Info($"[Summon Command] Profile '{profileName}' and its minion '{configuredMinion}' are already active. Dismissing minion only.");
-                        Chat.SendMessage("/minion");
+                        Chat.SendMessage($"/minion \"{configuredMinion}\"");
                     });
                     return;
                 }
@@ -575,13 +574,12 @@ namespace XIVAICompanion
                 Service.Log.Info($"Summoning companion from profile '{profileName}'...");
             });
 
-            bool isMinionSummoned = false;
             await Service.Framework.RunOnFrameworkThread(() =>
             {
-                isMinionSummoned = Service.ObjectTable.Any(o => o.ObjectKind == ObjectKind.Companion);
+                minionIsActive = GetMyMinion() != null;
             });
 
-            if (isMinionSummoned)
+            if (minionIsActive)
             {
                 Service.Log.Info($"[Summon Command] Step 1/4: Active minion found. Dismissing it.");
                 await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage("/minion"));
@@ -617,7 +615,7 @@ namespace XIVAICompanion
             {
                 await Service.Framework.RunOnFrameworkThread(() =>
                 {
-                    foundMinion = Service.ObjectTable.FirstOrDefault(o => o.ObjectKind == ObjectKind.Companion && o.Name.TextValue.Contains(minionToSummon));
+                    foundMinion = GetMyMinion();
                 });
 
                 if (foundMinion != null)

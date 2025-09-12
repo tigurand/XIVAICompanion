@@ -1,5 +1,6 @@
 ﻿using Dalamud.Game;
 using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Command;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.IoC;
@@ -7,6 +8,7 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using ECommons;
 using ECommons.Automation;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -383,7 +385,7 @@ namespace XIVAICompanion
                 && Guid.TryParse(configuration.NpcGlamourerDesignGuid, out var desiredDesignGuid)
                 && desiredDesignGuid != Guid.Empty)
             {
-                var targetCompanion = Service.ObjectTable.FirstOrDefault(o => o.ObjectKind == ObjectKind.Companion && o.Name.TextValue.Contains(configuration.MinionToReplace));
+                var targetCompanion = GetMyMinion();
                 var glamouredCompanion = (_glamouredMinionObjectId != 0) ? Service.ObjectTable.FirstOrDefault(o => o.GameObjectId == _glamouredMinionObjectId) : null;
 
                 if (glamouredCompanion != null && glamouredCompanion != targetCompanion)
@@ -435,9 +437,7 @@ namespace XIVAICompanion
                     Service.Log.Info("Glamourer API is now available. Attempting to apply pending glamour.");
                     if (Guid.TryParse(configuration.NpcGlamourerDesignGuid, out var designGuidToApply))
                     {
-                        var companionToGlamour = Service.ObjectTable.FirstOrDefault(o =>
-                            o.ObjectKind == ObjectKind.Companion &&
-                            o.Name.TextValue.Contains(configuration.MinionToReplace));
+                        var companionToGlamour = GetMyMinion();
 
                         if (companionToGlamour != null)
                         {
@@ -849,6 +849,26 @@ namespace XIVAICompanion
         private void OpenChatWindow()
         {
             _drawChatWindow = true;
+        }
+
+        private static unsafe uint? GetCompanionOwnerId(IGameObject gameObject)
+        {
+            if (gameObject.ObjectKind != ObjectKind.Companion)
+                return null;
+
+            var companion = (Companion*)gameObject.Address;
+            return companion->CompanionOwnerId;
+        }
+
+        private IGameObject? GetMyMinion()
+        {
+            if (string.IsNullOrEmpty(configuration.MinionToReplace) || Service.ClientState.LocalPlayer == null)
+                return null;
+
+            return Service.ObjectTable.FirstOrDefault(o =>
+                o.ObjectKind == ObjectKind.Companion &&
+                o.Name.TextValue.Contains(configuration.MinionToReplace) &&
+                GetCompanionOwnerId(o) == Service.ClientState.LocalPlayer.EntityId);
         }
 
         private void RevertTrackedMinion()
