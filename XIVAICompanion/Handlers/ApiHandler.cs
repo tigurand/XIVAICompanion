@@ -274,12 +274,41 @@ namespace XIVAICompanion
 
                     string sanitizedText = text;
 
-                    int lastPromptIndex = text.LastIndexOf(finalUserPrompt, StringComparison.Ordinal);
+                    var statusCode = (int)response.StatusCode;
+                    var promptTokens = (int?)responseJson.SelectToken("usageMetadata.promptTokenCount") ?? 0;
+                    var responseTokens = (int?)responseJson.SelectToken("usageMetadata.candidatesTokenCount") ?? 0;
+                    if (responseTokens == 0)
+                    {
+                        responseTokens = (int?)responseJson.SelectToken("usageMetadata.completionTokenCount") ?? 0;
+                    }
+                    var totalTokens = promptTokens + responseTokens;
+                    bool success = statusCode != 503 && responseTokens > 0;
 
+                    if (!success)
+                    {
+                        if (configuration.EnableConversationHistory && userTurn != null)
+                            (conversationHistory ?? new List<Content>()).Remove(userTurn);
+
+                        Service.Log.Warning(
+                            $"API Call Failure: Model='{modelToUse}', HTTP Status={statusCode} - {response.StatusCode}, " +
+                            $"ResponseTokenLimit={responseTokensToUse}, ThinkingBudget={thinkingBudget ?? 0}, " +
+                            $"Tokens=[P:{promptTokens}, R:{responseTokens}, T:{totalTokens}]"
+                            );
+
+                        return new ApiResult
+                        {
+                            WasSuccessful = false,
+                            ResponseJson = responseJson,
+                            HttpResponse = response,
+                            ResponseTokensUsed = responseTokensToUse,
+                            ThinkingBudgetUsed = thinkingBudget
+                        };
+                    }
+
+                    int lastPromptIndex = text.LastIndexOf(finalUserPrompt, StringComparison.Ordinal);
                     if (lastPromptIndex != -1)
                     {
                         int aiResponseStartIndex = lastPromptIndex + finalUserPrompt.Length;
-
                         if (aiResponseStartIndex < text.Length)
                         {
                             sanitizedText = text.Substring(aiResponseStartIndex);
@@ -391,21 +420,21 @@ namespace XIVAICompanion
                         PrintSystemMessage(infoBuilder.ToString());
                     }
 
-                    var promptTokens = (int?)responseJson.SelectToken("usageMetadata.promptTokenCount") ?? 0;
-                    var responseTokens = (int?)responseJson.SelectToken("usageMetadata.candidatesTokenCount") ?? 0;
-                    if (responseTokens == 0)
-                    {
-                        responseTokens = (int?)responseJson.SelectToken("usageMetadata.completionTokenCount") ?? 0;
-                    }
-                    var totalTokens = promptTokens + responseTokens;
-                    Service.Log.Info($"API Call Success: Model='{modelToUse}', ResponseTokenLimit={responseTokensToUse}, ThinkingBudget={thinkingBudget ?? 0}, Tokens=[P: {promptTokens}, R: {responseTokens}, T: {totalTokens}]");
+                    Service.Log.Info(
+                        $"API Call Success: Model='{modelToUse}', HTTP Status={statusCode} - {response.StatusCode}, " +
+                        $"ResponseTokenLimit={responseTokensToUse}, ThinkingBudget={thinkingBudget ?? 0}, " +
+                        $"Tokens=[P:{promptTokens}, R:{responseTokens}, T:{totalTokens}]"
+                    );
 
                     return new ApiResult
                     {
                         WasSuccessful = true,
+                        ResponseJson = responseJson,
+                        HttpResponse = response,
                         ResponseTokensUsed = responseTokensToUse,
                         ThinkingBudgetUsed = thinkingBudget
                     };
+
                 }
                 else
                 {
@@ -532,6 +561,10 @@ namespace XIVAICompanion
                 if (primaryResult.HttpResponse?.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
                     primaryReason = "API rate limit reached (RPM or RPD)";
+                }
+                else if (primaryResult.HttpResponse?.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+                {
+                    primaryReason = "the model is temporarily unable to handle the request (overloaded or offline)";
                 }
                 else if (!string.IsNullOrEmpty(finishReason) && finishReason != "STOP")
                 {

@@ -583,11 +583,11 @@ namespace XIVAICompanion
             {
                 Service.Log.Info($"[Summon Command] Step 1/4: Active minion found. Dismissing it.");
                 await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage("/minion"));
-                await Task.Delay(500);
+                await Task.Delay(1000);
             }
             else
             {
-                Service.Log.Info($"[Summon Command] Step 1/4: No minion summoned. Skipping dismissal.");
+                Service.Log.Info($"[Summon Command] Step 1/4: Active minion not found. Skipping dismissal.");
             }
 
             Service.Log.Info($"[Summon Command] Step 2/4: Applying profile '{profileName}'.");
@@ -601,8 +601,21 @@ namespace XIVAICompanion
                 return;
             }
 
-            Service.Log.Info($"[Summon Command] Step 3/4: Summoning '{minionToSummon}'.");
-            await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage($"/minion \"{minionToSummon}\""));
+            await Task.Delay(1000);
+            await Service.Framework.RunOnFrameworkThread(() =>
+            {
+                minionIsActive = GetMyMinion() != null;
+            });
+
+            if (minionIsActive)
+            {
+                Service.Log.Info($"[Summon Command] Step 3/4: Minion '{minionToSummon}' is active, skip summoning.");
+            }
+            else
+            {
+                Service.Log.Info($"[Summon Command] Step 3/4: Summoning '{minionToSummon}'.");
+                await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage($"/minion \"{minionToSummon}\""));
+            }
 
             await Task.Delay(500);
 
