@@ -13,6 +13,7 @@ namespace XIVAICompanion.Configurations
         public int SpecificReplyChannel { get; set; } = 0;
         public bool AutoReplyToAllTells { get; set; } = false;
         public bool IsOpenListenerModeEnabled { get; set; } = false;
+        public bool MixedHistoryMode { get; set; } = false;
         public float InitialResponseDelaySeconds { get; set; } = 1.5f;
 
         // Channels

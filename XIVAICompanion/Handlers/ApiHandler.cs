@@ -81,7 +81,8 @@ namespace XIVAICompanion
             var removeLineBreaks = true;
             var showAdditionalInfo = configuration.ShowAdditionalInfo;
 
-            var conversationHistory = GetHistoryForPlayer(senderName);
+            string historyName = (_openListenerModeBuffer && _mixedHistoryModeBuffer) ? "Multiple People" : senderName;
+            var conversationHistory = GetHistoryForPlayer(historyName);
 
             var failedAttempts = new List<(string Model, ApiResult Result)>();
             var modelToTry = configuration.AImodel;
@@ -726,7 +727,10 @@ namespace XIVAICompanion
             string userNameInstruction;
             if (nameOverride != null)
             {
-                userNameInstruction = $"You are speaking with a user whose name is {nameOverride}.\n";
+                if (nameOverride == "Multiple People")
+                    userNameInstruction = $"You are currently speaking with multiple people.\n";
+                else
+                    userNameInstruction = $"You are speaking with a user whose name is {nameOverride}.\n";
             }
             else
             {

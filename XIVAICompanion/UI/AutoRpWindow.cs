@@ -111,6 +111,17 @@ namespace XIVAICompanion
                 }
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("When Auto RP is running, this will capture ANY message in the selected channels and respond.\nThis bypasses the main 'Target Player Name' logic.");
 
+                ImGui.BeginDisabled(!_openListenerModeBuffer);
+                ImGui.SameLine();
+                ImGui.SetCursorPosX(200.0f);
+                if (ImGui.Checkbox("Use Mixed History", ref _mixedHistoryModeBuffer))
+                {
+                    configuration.AutoRpConfig.MixedHistoryMode = _mixedHistoryModeBuffer;
+                    configuration.Save();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Use mixed history to talk with multiple people instead of personal history.\nWarning: This may confuse the AI.");
+                ImGui.EndDisabled();
+
                 ImGui.Spacing();
                 ImGui.Separator();
                 ImGui.Spacing();

@@ -180,10 +180,6 @@ namespace XIVAICompanion
         private readonly Queue<string> _chatMessageQueue = new();
         private DateTime _lastQueuedMessageSentTimestamp = DateTime.MinValue;
 
-        // Dev Mode Stuff
-        private bool _isDevModeEnabled = false;
-        private bool _autoReplyToAllTellsBuffer;
-
         private bool _openListenerModeBuffer;
         private bool _openListenerListenSayBuffer;
         private bool _openListenerListenTellBuffer;
@@ -197,6 +193,11 @@ namespace XIVAICompanion
         private bool _openListenerListenPvPTeamBuffer;
         private readonly bool[] _openListenerListenLsBuffers = new bool[8];
         private readonly bool[] _openListenerListenCwlsBuffers = new bool[8];
+        private bool _mixedHistoryModeBuffer;
+
+        // Dev Mode Stuff
+        private bool _isDevModeEnabled = false;
+        private bool _autoReplyToAllTellsBuffer;
 
         // Minion Stuff
         public ulong _glamouredMinionObjectId;
@@ -579,6 +580,7 @@ namespace XIVAICompanion
                 _openListenerListenLsBuffers[i] = rpConfig.OpenListenerListenLs[i];
                 _openListenerListenCwlsBuffers[i] = rpConfig.OpenListenerListenCwls[i];
             }
+            _mixedHistoryModeBuffer = rpConfig.MixedHistoryMode;
         }
 
         private void LoadConfigIntoBuffers()
