@@ -105,6 +105,7 @@ namespace XIVAICompanion
 
         private bool _greetOnLoginBuffer;
         private string _loginGreetingPromptBuffer = string.Empty;
+        private bool _freshLoginBuffer;
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
         private int _conversationHistoryLimitBuffer;
@@ -493,7 +494,7 @@ namespace XIVAICompanion
                 _hasGreetedThisSession = true;
                 string greetingPrompt = configuration.LoginGreetingPrompt;
                 Service.Log.Info("Sending login greeting. Prompt: {Prompt}", greetingPrompt);
-                Task.Run(() => SendPrompt(greetingPrompt, isStateless: true, outputTarget: OutputTarget.PluginDebug, partnerName: GetPlayerDisplayName(), isGreeting: true));
+                Task.Run(() => SendPrompt(greetingPrompt, isStateless: true, outputTarget: OutputTarget.PluginDebug, partnerName: GetPlayerDisplayName(), isFreshLogin: _freshLoginBuffer));
             }
         }
 
@@ -506,15 +507,17 @@ namespace XIVAICompanion
         {
             Service.Log.Info("Ending session logic initiated (Logout/Character Change).");
             SaveCurrentSessionLog();
-
             _currentSessionChatLog.Clear();
-            _historicalChatLog.Clear();
 
-            InitializeConversation();
-            Service.Log.Info("Conversation history has been reset for the new session.");
+            if (_freshLoginBuffer)
+            {
+                _historicalChatLog.Clear();
+                InitializeConversation();
+                Service.Log.Info("Conversation history has been reset for the new session.");
+                _hasGreetedThisSession = false;
+            }
 
             _localPlayerName = string.Empty;
-            _hasGreetedThisSession = false;
         }
 
         private string GetPlayerDisplayName()
@@ -605,6 +608,7 @@ namespace XIVAICompanion
             _removeLineBreaksBuffer = configuration.RemoveLineBreaks;
             _showAdditionalInfoBuffer = configuration.ShowAdditionalInfo;
             _greetOnLoginBuffer = configuration.GreetOnLogin;
+            _freshLoginBuffer = configuration.FreshLogin;
             _loginGreetingPromptBuffer = configuration.LoginGreetingPrompt;
             _enableHistoryBuffer = configuration.EnableConversationHistory;
             _conversationHistoryLimitBuffer = configuration.ConversationHistoryLimit;
@@ -751,11 +755,6 @@ namespace XIVAICompanion
         {
             string processedInput = rawInput;
 
-            TimeZoneInfo localTimeZone = TimeZoneInfo.Local;
-            DateTime now = DateTime.Now;
-            bool isDst = localTimeZone.IsDaylightSavingTime(now);
-            string timeZoneInfo = $"{localTimeZone.DisplayName} - DST: {isDst}";
-
             var aliases = new Dictionary<string, string>
             {
                 // Lodestone Aliases
@@ -765,10 +764,6 @@ namespace XIVAICompanion
                 { "delodestone", "https://de.finalfantasyxiv.com/lodestone/" },
                 { "jplodestone", "https://jp.finalfantasyxiv.com/lodestone/" },
                 { "ffmaint", "https://eu.finalfantasyxiv.com/lodestone/news/category/2" },
-
-                // Other Aliases
-                { "mytime", now.ToString() },
-                { "mytimezone", timeZoneInfo }
             };
 
             foreach (var alias in aliases)

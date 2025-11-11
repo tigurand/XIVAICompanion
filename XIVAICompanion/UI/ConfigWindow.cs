@@ -486,26 +486,34 @@ namespace XIVAICompanion
                 }
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(380.0f);
+                ImGui.Checkbox("Fresh Login", ref _freshLoginBuffer);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Clears conversation history on logout and starts new conversation on login.\n" +
+                                     "Also controls whether to greet on each login or just once.");
+                }
+                ImGui.SameLine();
+                ImGui.SetCursorPosX(600.0f);
                 ImGui.Checkbox("Enable In-game Context", ref _enableInGameContextBuffer);
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip("Enables AI to use some in-game context as conversation's context.\n" +
                                      "For example: player's race, gender, level, location, weather information, etc.");
                 }
+
+                ImGui.Checkbox("Show Thoughts", ref _showThoughtsBuffer);
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("Show AI thoughts on answers.");
+                }
                 ImGui.SameLine();
-                ImGui.SetCursorPosX(600.0f);
+                ImGui.SetCursorPosX(380.0f);
                 ImGui.Checkbox("Auto Model Fallback", ref _enableAutoFallbackBuffer);
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip("If an API request fails (e.g., due to rate limits or a temporary issue),\n" +
                                      "the plugin will automatically and silently try the other available models.\n" +
                                      "It will only show an error if all models fail.");
-                }
-
-                ImGui.Checkbox("Show Thoughts", ref _showThoughtsBuffer);
-                if (ImGui.IsItemHovered())
-                {
-                    ImGui.SetTooltip("Show AI thoughts on answers.");
                 }
 
                 ImGui.TreePop();
@@ -586,6 +594,7 @@ namespace XIVAICompanion
             configuration.RemoveLineBreaks = _removeLineBreaksBuffer;
             configuration.ShowAdditionalInfo = _showAdditionalInfoBuffer;
             configuration.GreetOnLogin = _greetOnLoginBuffer;
+            configuration.FreshLogin = _freshLoginBuffer;
             if (string.IsNullOrWhiteSpace(_loginGreetingPromptBuffer))
             {
                 _loginGreetingPromptBuffer = "I'm back to Eorzea, please greet me.";

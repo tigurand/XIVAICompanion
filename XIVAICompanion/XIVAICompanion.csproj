@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
-    <AssemblyVersion>1.5.2.4</AssemblyVersion>
-    <Version>1.5.2.4</Version>
+    <AssemblyVersion>1.5.2.5</AssemblyVersion>
+    <Version>1.5.2.5</Version>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <DebugType>portable</DebugType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -14,12 +14,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ECommons" Version="3.0.1.16" />
-    <PackageReference Include="Glamourer.Api" Version="2.6.0" />
+    <PackageReference Include="ECommons" Version="3.0.1.26" />
+    <PackageReference Include="Glamourer.Api" Version="2.7.0" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Update="DalamudPackager" Version="13.1.0" />
+    <PackageReference Update="DotNet.ReproducibleBuilds" Version="1.2.39" />
   </ItemGroup>
 
 </Project>

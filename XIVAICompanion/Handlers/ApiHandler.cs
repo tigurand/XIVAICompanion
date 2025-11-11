@@ -15,7 +15,7 @@ namespace XIVAICompanion
 {
     public partial class AICompanionPlugin
     {
-        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isGreeting = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
+        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isFreshLogin = true, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
         {
             var systemPrompt = GetSystemPrompt(partnerName);
             var removeLineBreaks = configuration.RemoveLineBreaks;
@@ -26,10 +26,10 @@ namespace XIVAICompanion
             var failedAttempts = new List<(string Model, ApiResult Result)>();
             int initialModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
 
-            bool isThink = (configuration.ThinkMode || tempThinkMode) && !isGreeting;
+            bool isThink = (configuration.ThinkMode || tempThinkMode) && !isFreshLogin;
             if (isThink)
                 initialModelIndex = thinkingModelIndex;
-            else if (isGreeting)
+            else if (isFreshLogin)
                 initialModelIndex = greetingModelIndex;
 
             if (initialModelIndex == -1) initialModelIndex = 1;
@@ -39,7 +39,7 @@ namespace XIVAICompanion
                 int currentModelIndex = (initialModelIndex + i) % _availableModels.Length;
                 string modelToTry = _availableModels[currentModelIndex];
 
-                ApiResult result = await SendPromptInternal(input, modelToTry, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isGreeting, tempSearchMode, tempThinkMode, tempFreshMode, tempOocMode);
+                ApiResult result = await SendPromptInternal(input, modelToTry, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isFreshLogin, tempSearchMode, tempThinkMode, tempFreshMode, tempOocMode);
                 if (result.WasSuccessful) return;
                 failedAttempts.Add((modelToTry, result));
             }
@@ -103,7 +103,7 @@ namespace XIVAICompanion
 
         private async Task<ApiResult> SendPromptInternal(string input, string modelToUse, bool isStateless, OutputTarget outputTarget, string systemPrompt,
                                                 bool removeLineBreaks, bool showAdditionalInfo, bool forceHistory = false, XivChatType? replyChannel = null,
-                                                List<Content>? conversationHistory = null, bool isGreeting = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
+                                                List<Content>? conversationHistory = null, bool isFreshLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
         {
             int responseTokensToUse = configuration.MaxTokens;
             int? thinkingBudget = defaultThinkingBudget;
@@ -111,10 +111,10 @@ namespace XIVAICompanion
             bool useWebSearch = false;
             string currentPrompt = input.Replace('　', ' ').Trim();
 
-            bool isSearch = (configuration.SearchMode || tempSearchMode) && !isGreeting;
-            bool isThink = (configuration.ThinkMode || tempThinkMode) && !isGreeting;
-            bool isFresh = (_chatFreshMode || tempFreshMode) && !isGreeting;
-            bool isOoc = (_chatOocMode || tempOocMode) && !isGreeting;
+            bool isSearch = (configuration.SearchMode || tempSearchMode) && !isFreshLogin;
+            bool isThink = (configuration.ThinkMode || tempThinkMode) && !isFreshLogin;
+            bool isFresh = (_chatFreshMode || tempFreshMode) && !isFreshLogin;
+            bool isOoc = (_chatOocMode || tempOocMode) && !isFreshLogin;
 
             if (isStateless || isFresh)
             {

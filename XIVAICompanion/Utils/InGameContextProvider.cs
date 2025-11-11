@@ -115,9 +115,28 @@ namespace XIVAICompanion.Utils
             return context;
         }
 
+        public static string GetEorzeaTime(DateTime? realTime = null)
+        {
+            const double multiplier = 1440.0 / 70.0;
+            DateTime input = realTime?.ToUniversalTime() ?? DateTime.UtcNow;
+
+            double unixMillis = (input - DateTime.UnixEpoch).TotalMilliseconds;
+            double eorzeaMillis = unixMillis * multiplier;
+            DateTime eorzeaTime = DateTime.UnixEpoch.AddMilliseconds(eorzeaMillis);
+
+            return $"{eorzeaTime.Hour:D2}:{eorzeaTime.Minute:D2}";
+        }
+
+
         public static string FormatContextForPrompt(PlayerContext playerContext, GameContext gameContext)
         {
             var contextLines = new List<string>();
+            DateTimeOffset local = DateTimeOffset.Now;
+            var offset = DateTimeOffset.Now.Offset;
+            string tz = local.Offset.Minutes == 0
+                ? $"UTC{(offset >= TimeSpan.Zero ? "+" : "-")}{offset.Hours}"
+                : $"UTC{(offset >= TimeSpan.Zero ? "+" : "-")}{offset:hh\\:mm}";
+            var et = GetEorzeaTime();
 
             contextLines.Add("=== Player Information ===");
             contextLines.Add($"Race: {playerContext.Race}");
@@ -128,6 +147,11 @@ namespace XIVAICompanion.Utils
             contextLines.Add($"Class/Job: {playerContext.ClassJob}");
             contextLines.Add($"Level: {playerContext.Level}");
             contextLines.Add($"Homeworld (Home Server): {playerContext.Homeworld}");
+
+            contextLines.Add("=== Time Information ===");
+            contextLines.Add($"Local Time: {local.DateTime}");
+            contextLines.Add($"Time Zone: {tz}");
+            contextLines.Add($"Eorzea Time: {et}");
 
             contextLines.Add("\n=== Current Environment ===");
             contextLines.Add($"Current World/Server: {gameContext.CurrentWorld}");

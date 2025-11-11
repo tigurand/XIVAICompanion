@@ -28,6 +28,7 @@ namespace XIVAICompanion.Configurations
         public string LoginGreetingPrompt { get; set; } = "I'm back to Eorzea, please greet me.";
         public bool EnableConversationHistory { get; set; } = true;
         public int ConversationHistoryLimit { get; set; } = 10;
+        public bool FreshLogin { get; set; } = true;
         public bool EnableAutoFallback { get; set; } = true;
         public bool EnableInGameContext { get; set; } = true;
 
