@@ -60,7 +60,7 @@ namespace XIVAICompanion.Emoting
         {
             try
             {
-                var player = Service.ClientState.LocalPlayer;
+                var player = Service.ObjectTable.LocalPlayer;
 
                 if (player == null ||
                     instigator.GameObjectId != player.GameObjectId)
@@ -321,10 +321,10 @@ namespace XIVAICompanion.Emoting
 
             _emoteManager.StopLoopingEmote(minionId, minion);
 
-            if (Service.ClientState.LocalPlayer != null)
+            if (Service.ObjectTable.LocalPlayer != null)
             {
                 _emoteManager.TriggerEmoteUntilPlayerMoves(
-                    Service.ClientState.LocalPlayer,
+                    Service.ObjectTable.LocalPlayer,
                     minion,
                     animationId);
             }

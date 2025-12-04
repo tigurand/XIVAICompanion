@@ -781,7 +781,7 @@ namespace XIVAICompanion
 
                         if (targetPlayer == null)
                         {
-                            targetPlayer = Service.ClientState.LocalPlayer;
+                            targetPlayer = Service.ObjectTable.LocalPlayer;
                         }
 
                         if (targetPlayer != null)

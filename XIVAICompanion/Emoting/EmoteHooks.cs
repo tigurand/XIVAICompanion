@@ -52,7 +52,7 @@ namespace XIVAICompanion.Emoting
         {
             try
             {
-                if (_clientState.LocalPlayer != null)
+                if (_objectTable.LocalPlayer != null)
                 {
                     var instigatorObj = _objectTable.FirstOrDefault(x => (ulong)x.Address == instigatorAddr);
                     if (instigatorObj != null)

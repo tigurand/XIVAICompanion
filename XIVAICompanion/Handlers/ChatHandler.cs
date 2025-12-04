@@ -128,6 +128,38 @@ namespace XIVAICompanion
             }
         }
 
+        private int GetLsArrayIndex(XivChatType type)
+        {
+            return type switch
+            {
+                XivChatType.Ls1 => 0,
+                XivChatType.Ls2 => 1,
+                XivChatType.Ls3 => 2,
+                XivChatType.Ls4 => 3,
+                XivChatType.Ls5 => 4,
+                XivChatType.Ls6 => 5,
+                XivChatType.Ls7 => 6,
+                XivChatType.Ls8 => 7,
+                _ => -1
+            };
+        }
+
+        private int GetCwlsArrayIndex(XivChatType type)
+        {
+            return type switch
+            {
+                XivChatType.CrossLinkShell1 => 0,
+                XivChatType.CrossLinkShell2 => 1,
+                XivChatType.CrossLinkShell3 => 2,
+                XivChatType.CrossLinkShell4 => 3,
+                XivChatType.CrossLinkShell5 => 4,
+                XivChatType.CrossLinkShell6 => 5,
+                XivChatType.CrossLinkShell7 => 6,
+                XivChatType.CrossLinkShell8 => 7,
+                _ => -1
+            };
+        }
+
         private bool IsRpChannelEnabled(XivChatType type)
         {
             switch (type)
@@ -143,9 +175,21 @@ namespace XIVAICompanion
                 case XivChatType.NoviceNetwork: return _autoRpListenNoviceNetworkBuffer;
                 case XivChatType.PvPTeam: return _autoRpListenPvPTeamBuffer;
                 case >= XivChatType.Ls1 and <= XivChatType.Ls8:
-                    return _autoRpListenLsBuffers[(int)type - (int)XivChatType.Ls1];
+                    int lsIndex = GetLsArrayIndex(type);
+                    if (lsIndex == -1)
+                    {
+                        Service.Log.Warning($"Unsupported LS channel type: {type}");
+                        return false;
+                    }
+                    return _autoRpListenLsBuffers[lsIndex];
                 case >= XivChatType.CrossLinkShell1 and <= XivChatType.CrossLinkShell8:
-                    return _autoRpListenCwlsBuffers[(int)type - (int)XivChatType.CrossLinkShell1];
+                    int cwlsIndex = GetCwlsArrayIndex(type);
+                    if (cwlsIndex == -1)
+                    {
+                        Service.Log.Warning($"Unsupported CWLS channel type: {type}");
+                        return false;
+                    }
+                    return _autoRpListenCwlsBuffers[cwlsIndex];
                 default:
                     return false;
             }
@@ -166,9 +210,21 @@ namespace XIVAICompanion
                 case XivChatType.NoviceNetwork: return _openListenerListenNoviceNetworkBuffer;
                 case XivChatType.PvPTeam: return _openListenerListenPvPTeamBuffer;
                 case >= XivChatType.Ls1 and <= XivChatType.Ls8:
-                    return _openListenerListenLsBuffers[(int)type - (int)XivChatType.Ls1];
+                    int lsIndex = GetLsArrayIndex(type);
+                    if (lsIndex == -1)
+                    {
+                        Service.Log.Warning($"Unsupported OpenListener LS channel type: {type}");
+                        return false;
+                    }
+                    return _openListenerListenLsBuffers[lsIndex];
                 case >= XivChatType.CrossLinkShell1 and <= XivChatType.CrossLinkShell8:
-                    return _openListenerListenCwlsBuffers[(int)type - (int)XivChatType.CrossLinkShell1];
+                    int cwlsIndex = GetCwlsArrayIndex(type);
+                    if (cwlsIndex == -1)
+                    {
+                        Service.Log.Warning($"Unsupported OpenListener CWLS channel type: {type}");
+                        return false;
+                    }
+                    return _openListenerListenCwlsBuffers[cwlsIndex];
                 default:
                     return false;
             }

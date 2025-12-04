@@ -348,7 +348,7 @@ namespace XIVAICompanion
 
             Service.Framework.RunOnFrameworkThread(() =>
             {
-                if (Service.ClientState.IsLoggedIn && Service.ClientState.LocalPlayer != null)
+                if (Service.ClientState.IsLoggedIn && Service.ObjectTable.LocalPlayer != null)
                 {
                     OnLogin();
                 }
@@ -377,7 +377,7 @@ namespace XIVAICompanion
 
         private void OnFrameworkUpdate(IFramework framework)
         {
-            if (Service.ClientState.LocalPlayer == null)
+            if (Service.ObjectTable.LocalPlayer == null)
             {
                 RevertTrackedMinion();
                 _isWaitingForGlamourer = false;
@@ -482,9 +482,9 @@ namespace XIVAICompanion
 
         private void OnLogin()
         {
-            if (Service.ClientState.LocalPlayer != null)
+            if (Service.ObjectTable.LocalPlayer != null)
             {
-                _localPlayerName = Service.ClientState.LocalPlayer.Name.ToString();
+                _localPlayerName = Service.ObjectTable.LocalPlayer.Name.ToString();
             }
 
             LoadHistoricalLogs(configuration.AIName);
@@ -859,13 +859,13 @@ namespace XIVAICompanion
 
         private IGameObject? GetMyMinion()
         {
-            if (string.IsNullOrEmpty(configuration.MinionToReplace) || Service.ClientState.LocalPlayer == null)
+            if (string.IsNullOrEmpty(configuration.MinionToReplace) || Service.ObjectTable.LocalPlayer == null)
                 return null;
 
             return Service.ObjectTable.FirstOrDefault(o =>
                 o.ObjectKind == ObjectKind.Companion &&
                 o.Name.TextValue.Contains(configuration.MinionToReplace) &&
-                GetCompanionOwnerId(o) == Service.ClientState.LocalPlayer.EntityId);
+                GetCompanionOwnerId(o) == Service.ObjectTable.LocalPlayer.EntityId);
         }
 
         private void RevertTrackedMinion()

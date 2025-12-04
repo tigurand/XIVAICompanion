@@ -85,9 +85,9 @@ namespace XIVAICompanion.Utils
 
             try
             {
-                if (clientState.LocalPlayer?.CurrentWorld != null)
+                if (Service.ObjectTable.LocalPlayer?.CurrentWorld != null)
                 {
-                    context.CurrentWorld = clientState.LocalPlayer.CurrentWorld.Value.Name.ToString() ?? "Unknown";
+                    context.CurrentWorld = Service.ObjectTable.LocalPlayer.CurrentWorld.Value.Name.ToString() ?? "Unknown";
                 }
 
                 if (clientState.TerritoryType != 0)
