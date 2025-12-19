@@ -1,6 +1,7 @@
 ﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Utility;
+using ECommons;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -22,6 +23,11 @@ namespace XIVAICompanion
             ImGui.SetNextWindowSize(new Vector2(800, 600), ImGuiCond.FirstUseEver);
             if (ImGui.Begin($"{Name} | Chat", ref _drawChatWindow))
             {
+                if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.Heart, out var kofiPressed, new UIHelper.HeaderIconOptions { Tooltip = "Support on Ko-fi" }) && kofiPressed)
+                {
+                    GenericHelpers.ShellStart("https://ko-fi.com/lucillebagul");
+                }
+
                 if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.TheaterMasks, out var openAutoRpPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Auto Role-Play Window" }) && openAutoRpPressed)
                 {
                     _drawAutoRpWindow = true;

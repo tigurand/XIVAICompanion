@@ -78,7 +78,7 @@ namespace XIVAICompanion
         // Configuration Buffers
         private string _apiKeyBuffer = string.Empty;
         private int _maxTokensBuffer;
-        private readonly string[] _availableModels = { "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite" };
+        private readonly string[] _availableModels = { "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite" };
         private int _selectedModelIndex = -1;
         private const int thinkingModelIndex = 0;
         private const int greetingModelIndex = 2;

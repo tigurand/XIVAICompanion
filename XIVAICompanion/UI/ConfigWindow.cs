@@ -1,6 +1,7 @@
 ﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Utility;
+using ECommons;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -78,6 +79,11 @@ namespace XIVAICompanion
             ImGui.SetWindowSize($"{Name} | Configuration", new Vector2(400, 300), ImGuiCond.Appearing);
             ImGui.Begin($"{Name} | Configuration", ref _drawConfigWindow, ImGuiWindowFlags.AlwaysAutoResize);
 
+            if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.Heart, out var kofiPressed, new UIHelper.HeaderIconOptions { Tooltip = "Support on Ko-fi" }) && kofiPressed)
+            {
+                GenericHelpers.ShellStart("https://ko-fi.com/lucillebagul");
+            }
+
             if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.TheaterMasks, out var openAutoRpPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Auto Role-Play Window" }) && openAutoRpPressed)
             {
                 _drawAutoRpWindow = true;
@@ -111,19 +117,8 @@ namespace XIVAICompanion
             ImGui.SameLine();
             if (ImGui.SmallButton("Details"))
             {
-                string modelsDocs = "";
-                if (_selectedModelIndex == 0)
-                {
-                    modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro";
-                }
-                else if (_selectedModelIndex == 1)
-                {
-                    modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash";
-                }
-                else if (_selectedModelIndex == 2)
-                {
-                    modelsDocs = "https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-lite";
-                }
+                string model = _availableModels[_selectedModelIndex];
+                string modelsDocs = "https://ai.google.dev/gemini-api/docs/models#" + model;
                 Util.OpenLink(modelsDocs);
             }
 
