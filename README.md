@@ -1,3 +1,4 @@
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y81QD26O)
 # XIV AI Companion
 At first, I just wanted to change 2 lines of code from Eisenhuth's [dalamud-chatgpt](https://github.com/Eisenhuth/dalamud-chatgpt) so I can use Gemini instead of ChatGPT, but I changed too much...
 
