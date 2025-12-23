@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows7.0</TargetFramework>
-    <AssemblyVersion>1.6.0.0</AssemblyVersion>
-    <Version>1.6.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <Version>2.0.0.0</Version>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <DebugType>portable</DebugType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ECommons" Version="3.1.0.5" />
+    <PackageReference Include="ECommons" Version="3.1.0.10" />
     <PackageReference Include="Glamourer.Api" Version="2.8.0" />
   </ItemGroup>
 

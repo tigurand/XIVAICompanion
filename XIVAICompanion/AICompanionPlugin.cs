@@ -23,6 +23,7 @@ using XIVAICompanion.Configurations;
 using XIVAICompanion.Emoting;
 using XIVAICompanion.Managers;
 using XIVAICompanion.Models;
+using XIVAICompanion.Providers;
 
 namespace XIVAICompanion
 {
@@ -49,6 +50,9 @@ namespace XIVAICompanion
             GameChat,
             PluginWindow
         }
+
+        private IAiProvider _currentProvider = null!;
+
         public string Name
         {
             get
@@ -76,12 +80,27 @@ namespace XIVAICompanion
         private bool _drawConfigWindow;
 
         // Configuration Buffers
+        private AiProviderType _providerBuffer;
         private string _apiKeyBuffer = string.Empty;
+        private string _openAiApiKeyBuffer = string.Empty;
+        private string _openAiBaseUrlBuffer = string.Empty;
+        private string _openAiModelBuffer = string.Empty;
         private int _maxTokensBuffer;
-        private readonly string[] _availableModels = { "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite" };
-        private int _selectedModelIndex = -1;
-        private const int thinkingModelIndex = 0;
-        private const int greetingModelIndex = 2;
+
+        // Model Profile Buffers
+        private int _selectedProfileIndex = -1;
+        private string _profileNameBuffer = "New Profile";
+        private AiProviderType _profileProviderBuffer = AiProviderType.Gemini;
+        private string _profileBaseUrlBuffer = string.Empty;
+        private string _profileApiKeyBuffer = string.Empty;
+        private string _profileModelIdBuffer = string.Empty;
+        private int _profileMaxTokensBuffer = 1024;
+        private bool _profileUseTavilyInsteadBuffer = false;
+        private string _profileTavilyApiKeyBuffer = string.Empty;
+
+        private int _defaultModelProfileIndexBuffer = -1;
+        private int _thinkingModelProfileIndexBuffer = -1;
+        private int _greetingModelProfileIndexBuffer = -1;
 
         private string _aiNameBuffer = string.Empty;
         private bool _letSystemPromptHandleAINameBuffer;
@@ -219,6 +238,8 @@ namespace XIVAICompanion
 
             configuration = Service.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
             configuration.Initialize(Service.PluginInterface);
+
+            UpdateCurrentProvider();
 
             LoadAutoRpConfigIntoBuffers();
             LoadConfigIntoBuffers();
@@ -588,12 +609,12 @@ namespace XIVAICompanion
 
         private void LoadConfigIntoBuffers()
         {
-            _selectedModelIndex = Array.IndexOf(_availableModels, configuration.AImodel);
-            if (_selectedModelIndex == -1)
-            {
-                _selectedModelIndex = 1;
-            }
+            _providerBuffer = configuration.Provider;
             _apiKeyBuffer = configuration.ApiKey;
+            _openAiApiKeyBuffer = configuration.OpenAiApiKey;
+            _openAiBaseUrlBuffer = configuration.OpenAiBaseUrl;
+            _openAiModelBuffer = configuration.OpenAiModel;
+
             _maxTokensBuffer = configuration.MaxTokens > 0 ? configuration.MaxTokens : 1024;
             _aiNameBuffer = configuration.AIName;
             _letSystemPromptHandleAINameBuffer = configuration.LetSystemPromptHandleAIName;
@@ -624,7 +645,27 @@ namespace XIVAICompanion
             _searchModeBuffer = configuration.SearchMode;
             _thinkModeBuffer = configuration.ThinkMode;
 
+            _defaultModelProfileIndexBuffer = configuration.DefaultModelIndex;
+            _thinkingModelProfileIndexBuffer = configuration.ThinkingModelIndex;
+            _greetingModelProfileIndexBuffer = configuration.GreetingModelIndex;
+
             _isDevModeEnabled = configuration.IsDevModeEnabled;
+        }
+
+        public void UpdateCurrentProvider()
+        {
+            switch (configuration.Provider)
+            {
+                case AiProviderType.Gemini:
+                    _currentProvider = new GeminiProvider(httpClient);
+                    break;
+                case AiProviderType.OpenAiCompatible:
+                    _currentProvider = new OpenAiProvider(httpClient);
+                    break;
+                default:
+                    _currentProvider = new GeminiProvider(httpClient);
+                    break;
+            }
         }
 
         private void LoadAvailablePersonas()

@@ -1,6 +1,8 @@
 ﻿using Dalamud.Configuration;
 using Dalamud.Plugin;
+using System.Collections.Generic;
 using System.Numerics;
+using XIVAICompanion.Providers;
 
 namespace XIVAICompanion.Configurations
 {
@@ -8,10 +10,26 @@ namespace XIVAICompanion.Configurations
     {
         public int Version { get; set; }
 
-        // General Settings
+        // Provider Settings
+        public AiProviderType Provider { get; set; } = AiProviderType.Gemini;
+
+        // Model Profiles
+        public List<ModelProfile> ModelProfiles { get; set; } = new();
+        public int DefaultModelIndex { get; set; } = -1;
+        public int ThinkingModelIndex { get; set; } = -1;
+        public int GreetingModelIndex { get; set; } = -1;
+
+        // Gemini Settings (Legacy/Backwards Compatibility or Global)
         public string ApiKey { get; set; } = "";
-        public int MaxTokens { get; set; } = 1024;
         public string AImodel { get; set; } = "gemini-2.5-flash";
+
+        // OpenAI Settings (Legacy/Backwards Compatibility or Global)
+        public string OpenAiApiKey { get; set; } = "";
+        public string OpenAiBaseUrl { get; set; } = "https://api.openai.com/v1";
+        public string OpenAiModel { get; set; } = "gpt-4o";
+
+        // General AI Settings
+        public int MaxTokens { get; set; } = 1024;
 
         // Persona Settings
         public string AIName { get; set; } = "AI";
@@ -59,6 +77,15 @@ namespace XIVAICompanion.Configurations
         public void Initialize(IDalamudPluginInterface pInterface)
         {
             pluginInterface = pInterface;
+
+            // Integrity Check: Ensure Tavily fields are initialized if existing profiles lack them
+            if (ModelProfiles != null)
+            {
+                foreach (var profile in ModelProfiles)
+                {
+                    if (profile.TavilyApiKey == null) profile.TavilyApiKey = string.Empty;
+                }
+            }
         }
 
         public void Save()
