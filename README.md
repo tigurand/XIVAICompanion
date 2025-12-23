@@ -1,6 +1,7 @@
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y81QD26O)
 # XIV AI Companion
-At first, I just wanted to change 2 lines of code from Eisenhuth's [dalamud-chatgpt](https://github.com/Eisenhuth/dalamud-chatgpt) so I can use Gemini instead of ChatGPT, but I changed too much...
+At first, I just wanted to change 2 lines of code from Eisenhuth's [dalamud-chatgpt](https://github.com/Eisenhuth/dalamud-chatgpt) so I can use Gemini instead of ChatGPT, but I changed too much...<br />
+But then Google became stingy, so I implemented support for any OpenAI-compatible API.
 
 # Installation
 Add<br />
@@ -11,14 +12,14 @@ to list of custom repo under Experimental tab in dalamud settings.
 Install and enable XIV AI Companion.
 
 # Usage
-**Requires Google API key** - click the button in the configuration which leads here: https://aistudio.google.com/app/apikey<br />
-It is now using Gemini because... no real reason, just personal preference based on my wallet condition.<br />
-You can use the free tier for this API key.<br />
-**Warning:** Avoid sharing sensitive, confidential, or personal info with this AI, especially if you are using the free tier. It’s Google’s AI—if you are not new to the internet, you probably know how they handle your data. Check their terms here: https://ai.google.dev/gemini-api/terms
+**Requires API Key**<br />
+You can use either Gemini, ChatGPT, or any OpenAI-compatible API.<br />
+Please note that some features may work or not for certain AI models.<br />
+**Warning:** Avoid sharing sensitive, confidential, or personal information with this AI—especially if your interactions may be used for training. Always review the provider’s terms first.
 
 # Features
 **Chat With AI**<br />
-You can set the name of your AI and how your AI will address you. You can also use prompt for advanced persona. Define it yourself if you want it to be censored or uncensored. I'm not your government, I'm also not your credit card company, so I don't force censorship to you. Sometimes prohibited words may still get blocked by the system, in that case, retry your message, it could be just a hiccup. If it's persistent, try to rephrase it slightly, Google probably think that phrase is too sensitive, I have no control over this.<br />
+You can set the name of your AI and how your AI will address you. You can also use prompt for advanced persona. It’s your decision whether to use a strictly moderated AI or a more flexible one. I'm not your government, I'm also not your credit card company, so I don't force censorship to you.<br />
 Example:<br />
 <img width="818" height="232" alt="Screenshot 2025-07-31 111107" src="https://github.com/user-attachments/assets/11b4e29e-b13d-4d64-bb62-788d2c81eb57" /><br />
 <img width="967" height="289" alt="Screenshot 2025-07-31 111330" src="https://github.com/user-attachments/assets/0963a8fc-82c8-472e-9d0c-1ec588acbf80" />
