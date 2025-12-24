@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -5,9 +7,6 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using XIVAICompanion.Models;
 
 namespace XIVAICompanion.Providers
 {
@@ -43,14 +42,14 @@ namespace XIVAICompanion.Providers
             }
 
             var messages = new List<object>();
-            
+
             messages.Add(new { role = "system", content = request.SystemPrompt });
 
             foreach (var content in request.ConversationHistory)
-            {               
+            {
                 string role = content.Role == "model" ? "assistant" : "user";
                 string text = string.Join("\n", content.Parts.Select(p => p.Text));
-                
+
                 if (!string.IsNullOrWhiteSpace(text))
                 {
                     messages.Add(new { role = role, content = text });
@@ -122,15 +121,15 @@ namespace XIVAICompanion.Providers
                 }
 
                 result.ResponseText = (string?)result.ResponseJson?.SelectToken("choices[0].message.content");
-                
+
                 result.PromptTokens = (int?)result.ResponseJson?.SelectToken("usage.prompt_tokens") ?? 0;
                 result.ResponseTokens = (int?)result.ResponseJson?.SelectToken("usage.completion_tokens") ?? 0;
                 result.TotalTokens = (int?)result.ResponseJson?.SelectToken("usage.total_tokens") ?? (result.PromptTokens + result.ResponseTokens);
 
                 string? finishReason = (string?)result.ResponseJson?.SelectToken("choices[0].finish_reason");
-                
+
                 result.WasSuccessful = !string.IsNullOrEmpty(result.ResponseText);
-                
+
                 if (finishReason == "length") result.WasSuccessful = false; // Similar to MAX_TOKENS fallback logic
 
                 return result;

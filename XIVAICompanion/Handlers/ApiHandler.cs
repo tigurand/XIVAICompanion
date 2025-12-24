@@ -1,15 +1,11 @@
 ﻿using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.Text;
-using FFXIVClientStructs.FFXIV.Client.Game.Character;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using XIVAICompanion.Configurations;
 using XIVAICompanion.Models;
 using XIVAICompanion.Providers;
 using XIVAICompanion.Utils;
@@ -27,11 +23,11 @@ namespace XIVAICompanion
             var conversationHistory = GetHistoryForPlayer(partnerName);
 
             var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
-            
+
             var profilesToTry = new List<ModelProfile>();
-            
+
             int initialProfileIndex = configuration.DefaultModelIndex;
-            
+
             bool isThink = (configuration.ThinkMode || tempThinkMode) && !isFreshLogin;
             if (isThink && configuration.ThinkingModelIndex != -1)
             {
@@ -62,7 +58,7 @@ namespace XIVAICompanion
                 ProviderResult result = await SendPromptInternal(input, profile, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isFreshLogin, tempSearchMode, tempThinkMode, tempFreshMode, tempOocMode);
                 if (result.WasSuccessful) return;
                 failedAttempts.Add((profile, result));
-                
+
                 if (!configuration.EnableAutoFallback) break;
             }
 
@@ -80,7 +76,7 @@ namespace XIVAICompanion
             var conversationHistory = GetHistoryForPlayer(rpPartnerName);
 
             var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
-            
+
             var profilesToTry = new List<ModelProfile>();
             int initialProfileIndex = configuration.DefaultModelIndex;
 
@@ -100,7 +96,7 @@ namespace XIVAICompanion
                 ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
                 if (result.WasSuccessful) return;
                 failedAttempts.Add((profile, result));
-                
+
                 if (!configuration.EnableAutoFallback) break;
             }
 
@@ -118,7 +114,7 @@ namespace XIVAICompanion
             var conversationHistory = GetHistoryForPlayer(historyName);
 
             var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
-            
+
             var profilesToTry = new List<ModelProfile>();
             int initialProfileIndex = configuration.DefaultModelIndex;
 
@@ -138,7 +134,7 @@ namespace XIVAICompanion
                 ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
                 if (result.WasSuccessful) return;
                 failedAttempts.Add((profile, result));
-                
+
                 if (!configuration.EnableAutoFallback) break;
             }
 
@@ -172,6 +168,28 @@ namespace XIVAICompanion
             }
             finalUserPrompt += $"--- User Message ---\n{currentPrompt}";
 
+            bool shouldPreSearchWithTavily = useWebSearch
+                && !string.IsNullOrEmpty(profile.TavilyApiKey)
+                && (profile.ProviderType == AiProviderType.OpenAiCompatible
+                    || (profile.ProviderType == AiProviderType.Gemini && profile.UseTavilyInstead));
+
+            bool didPreSearchWithTavily = false;
+            if (shouldPreSearchWithTavily)
+            {
+                string tavilyResults = await TavilySearchHelper.SearchAsync(currentPrompt, profile.TavilyApiKey);
+                const int maxTavilyChars = 6000;
+                if (!string.IsNullOrEmpty(tavilyResults) && tavilyResults.Length > maxTavilyChars)
+                    tavilyResults = tavilyResults.Substring(0, maxTavilyChars) + "\n... (truncated)";
+
+                finalUserPrompt = "[SYSTEM COMMAND: TAVILY WEB SEARCH]\n" +
+                                "Use the following web search results to answer the user, prefer them over prior knowledge.\n\n" +
+                                tavilyResults + "\n\n" +
+                                finalUserPrompt;
+
+                useWebSearch = false;
+                didPreSearchWithTavily = true;
+            }
+
             if (!configuration.EnableConversationHistory)
             {
                 isStateless = true;
@@ -201,7 +219,7 @@ namespace XIVAICompanion
                     activeHistory.Add(new Content { Role = "user", Parts = new List<Part> { new Part { Text = systemPrompt } } });
                     activeHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } });
                 }
-                
+
                 userTurn = new Content { Role = "user", Parts = new List<Part> { new Part { Text = finalUserPrompt } } };
                 activeHistory.Add(userTurn);
                 requestContents = activeHistory;
@@ -234,7 +252,7 @@ namespace XIVAICompanion
 
                 ProviderResult result = await providerToUse.SendPromptAsync(request, profile);
 
-                if (result.WasSuccessful && result.ResponseJson != null)
+                if (!didPreSearchWithTavily && result.WasSuccessful && result.ResponseJson != null)
                 {
                     bool toolCalled = false;
                     string searchQuery = string.Empty;
