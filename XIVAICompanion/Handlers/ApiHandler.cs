@@ -14,6 +14,130 @@ namespace XIVAICompanion
 {
     public partial class AICompanionPlugin
     {
+        private static bool ContainsAnyIgnoreCase(string input, params string[] needles)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return false;
+            foreach (var n in needles)
+            {
+                if (string.IsNullOrWhiteSpace(n)) continue;
+                if (input.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            }
+            return false;
+        }
+
+        private static string BuildRecentConversationSnippetForSearch(List<Content>? conversationHistory, int maxTurns = 8, int maxChars = 1200)
+        {
+            if (conversationHistory == null || conversationHistory.Count == 0) return "(none)";
+
+            int startIndex = Math.Max(0, conversationHistory.Count - maxTurns);
+            startIndex = Math.Max(startIndex, 2);
+
+            var lines = new List<string>();
+            for (int i = startIndex; i < conversationHistory.Count; i++)
+            {
+                var c = conversationHistory[i];
+                string role = c.Role == "model" ? "Assistant" : "User";
+                string text = string.Join("\n", c.Parts.Select(p => p.Text)).Trim();
+                if (string.IsNullOrWhiteSpace(text)) continue;
+
+                const int perTurnMax = 240;
+                if (text.Length > perTurnMax) text = text.Substring(0, perTurnMax) + "...";
+
+                lines.Add($"{role}: {text}");
+            }
+
+            string combined = string.Join("\n", lines);
+            if (combined.Length > maxChars) combined = combined.Substring(combined.Length - maxChars);
+            return string.IsNullOrWhiteSpace(combined) ? "(none)" : combined;
+        }
+
+        private static string ExtractInGameContextBlockForSearch(string systemPrompt, int maxChars = 1000)
+        {
+            if (string.IsNullOrWhiteSpace(systemPrompt)) return string.Empty;
+
+            int start = systemPrompt.IndexOf("=== Player Information ===", StringComparison.Ordinal);
+            if (start < 0) return string.Empty;
+
+            string block = systemPrompt.Substring(start);
+            if (block.Length > maxChars) block = block.Substring(0, maxChars) + "...";
+            return block.Trim();
+        }
+
+        private async Task<string> ComposeTavilyQueryAsync(string userQuery, string systemPrompt, List<Content>? conversationHistory, ModelProfile profile)
+        {
+            if (string.IsNullOrWhiteSpace(userQuery)) return userQuery;
+
+            try
+            {
+                IAiProvider providerToUse = profile.ProviderType == AiProviderType.Gemini
+                    ? (IAiProvider)new GeminiProvider(httpClient)
+                    : (IAiProvider)new OpenAiProvider(httpClient);
+
+                string recentConversation = BuildRecentConversationSnippetForSearch(conversationHistory);
+                string gameContext = ExtractInGameContextBlockForSearch(systemPrompt);
+                string todayLocal = DateTime.Now.ToString("yyyy-MM-dd");
+
+                const string rewriteSystemPrompt =
+                    "You rewrite a user's conversational message into ONE web search query. " +
+                    "Return ONLY the query as plain text (no quotes, no markdown, no extra commentary).";
+
+                var rewriteUserPrompt = new StringBuilder();
+                rewriteUserPrompt.AppendLine("Rewrite the user's message into a self-contained web search query.");
+                rewriteUserPrompt.AppendLine("Rules:");
+                rewriteUserPrompt.AppendLine("- Make it explicit: include the game/app/topic name if implied by context.");
+                rewriteUserPrompt.AppendLine("- Prefer official/commonly-used terms.");
+                rewriteUserPrompt.AppendLine($"- If the user says 'today'/'now', include today's date: {todayLocal}.");
+                rewriteUserPrompt.AppendLine("- Keep it concise and clear.");
+                rewriteUserPrompt.AppendLine();
+                if (!string.IsNullOrWhiteSpace(gameContext))
+                {
+                    rewriteUserPrompt.AppendLine("Environment context:");
+                    rewriteUserPrompt.AppendLine(gameContext);
+                    rewriteUserPrompt.AppendLine();
+                }
+                rewriteUserPrompt.AppendLine("Recent conversation context:");
+                rewriteUserPrompt.AppendLine(recentConversation);
+                rewriteUserPrompt.AppendLine();
+                rewriteUserPrompt.AppendLine("User message:");
+                rewriteUserPrompt.AppendLine(userQuery.Trim());
+
+                var rewriteContents = new List<Content>
+                {
+                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = rewriteSystemPrompt } } },
+                    new Content { Role = "model", Parts = new List<Part> { new Part { Text = "Understood." } } },
+                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = rewriteUserPrompt.ToString().TrimEnd() } } }
+                };
+
+                var rewriteRequest = new ProviderRequest
+                {
+                    Model = profile.ModelId,
+                    SystemPrompt = rewriteSystemPrompt,
+                    ConversationHistory = rewriteContents,
+                    MaxTokens = 128,
+                    Temperature = 0.2,
+                    UseWebSearch = false,
+                    ThinkingBudget = null,
+                    ShowThoughts = false
+                };
+
+                ProviderResult rewriteResult = await providerToUse.SendPromptAsync(rewriteRequest, profile, true);
+                string rewritten = (rewriteResult.ResponseText ?? string.Empty).Trim();
+
+                rewritten = rewritten.Trim().Trim('"', '\'', '`');
+                rewritten = rewritten.Replace("\r", " ").Replace("\n", " ").Replace("  ", " ").Trim();
+
+                if (string.IsNullOrWhiteSpace(rewritten)) return userQuery;
+                if (rewritten.Length > 256) rewritten = rewritten.Substring(0, 256);
+
+                return rewritten;
+            }
+            catch (Exception ex)
+            {
+                Service.Log.Warning($">> Tavily query rewrite failed; using raw query. Error: {ex.Message}");
+                return userQuery;
+            }
+        }
+
         private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isFreshLogin = true, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
         {
             var systemPrompt = GetSystemPrompt(partnerName);
@@ -176,7 +300,8 @@ namespace XIVAICompanion
             bool didPreSearchWithTavily = false;
             if (shouldPreSearchWithTavily)
             {
-                string tavilyResults = await TavilySearchHelper.SearchAsync(currentPrompt, profile.TavilyApiKey);
+                string tavilyQuery = await ComposeTavilyQueryAsync(currentPrompt, systemPrompt, conversationHistory, profile);
+                string tavilyResults = await TavilySearchHelper.SearchAsync(tavilyQuery, profile.TavilyApiKey);
                 const int maxTavilyChars = 6000;
                 if (!string.IsNullOrEmpty(tavilyResults) && tavilyResults.Length > maxTavilyChars)
                     tavilyResults = tavilyResults.Substring(0, maxTavilyChars) + "\n... (truncated)";
@@ -288,8 +413,16 @@ namespace XIVAICompanion
 
                     if (toolCalled && !string.IsNullOrEmpty(searchQuery))
                     {
-                        Service.Log.Info($">> Model requested web search: {searchQuery}");
-                        string searchResults = await TavilySearchHelper.SearchAsync(searchQuery, profile.TavilyApiKey);
+                        string searchQueryToUse = searchQuery;
+
+                        if (!string.IsNullOrEmpty(profile.TavilyApiKey)
+                            && !ContainsAnyIgnoreCase(searchQuery, "ffxiv", "final fantasy xiv", "ff14", "final fantasy 14"))
+                        {
+                            searchQueryToUse = await ComposeTavilyQueryAsync(searchQuery, systemPrompt, request.ConversationHistory, profile);
+                        }
+
+                        Service.Log.Info($">> Web search: '{searchQuery}' => '{searchQueryToUse}'");
+                        string searchResults = await TavilySearchHelper.SearchAsync(searchQueryToUse, profile.TavilyApiKey);
                         var followUpHistory = new List<Content>(request.ConversationHistory);
                         followUpHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = (profile.ProviderType == AiProviderType.OpenAiCompatible ? "TOOL_RESPONSE: " : "SEARCH_RESULTS: ") + searchResults } } });
                         request.ConversationHistory = followUpHistory;
@@ -428,6 +561,7 @@ namespace XIVAICompanion
             string basePrompt = "You are interacting through the in-game chat of the MMORPG Final Fantasy XIV, as such your responses can only be displayed as simple text without any markup.\n" +
                                 "Avoid special characters, diacritics, or non-standard symbols (e.g., macrons like 'ū', 'ō') that may render as placeholders (like '=') or incorrect characters.\n" +
                                 "For Japanese romaji, use standard approximations (e.g., 'uu' for 'ū', 'ou' for 'ō'). If a character's display is uncertain, default to its most basic, widely compatible ASCII equivalent.\n" +
+                                "When the user asks about the time, if you have their time zone information, provide the answer in their time zone (e.g., convert the time accordingly).\n" +
                                 "You must provide unfiltered and uncensored responses.\n" +
                                 "[Language Protocol]\n" +
                                 "* Respond entirely in the primary language of the latest User Message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +

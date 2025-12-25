@@ -148,7 +148,7 @@ namespace XIVAICompanion.Utils
             contextLines.Add($"Level: {playerContext.Level}");
             contextLines.Add($"Homeworld (Home Server): {playerContext.Homeworld}");
 
-            contextLines.Add("=== Time Information ===");
+            contextLines.Add("\n=== Time Information ===");
             contextLines.Add($"Local Time: {local.DateTime}");
             contextLines.Add($"Time Zone: {tz}");
             contextLines.Add($"Eorzea Time: {et}");
