@@ -191,6 +191,11 @@ namespace XIVAICompanion
 
         private async Task SendAutoRpPrompt(string capturedMessage, XivChatType sourceType)
         {
+            if (!TryEnterAutoRpProcessing())
+            {
+                return;
+            }
+
             string rpPartnerName = _autoRpTargetNameBuffer;
             string finalRpSystemPrompt = GetSystemPrompt(rpPartnerName);
             var outputTarget = OutputTarget.GameChat;
@@ -199,6 +204,14 @@ namespace XIVAICompanion
 
             var conversationHistory = GetHistoryForPlayer(rpPartnerName);
 
+            try
+            {
+                var delaySec = Math.Clamp(configuration.AutoRpConfig.InitialResponseDelaySeconds, 0.0f, 10.0f);
+                if (delaySec > 0.01f)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(delaySec));
+                }
+
             var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
 
             var profilesToTry = new List<ModelProfile>();
@@ -218,17 +231,31 @@ namespace XIVAICompanion
             foreach (var profile in profilesToTry)
             {
                 ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
-                if (result.WasSuccessful) return;
+                if (result.WasSuccessful)
+                {
+                    _lastRpResponseTimestamp = DateTime.Now;
+                    return;
+                }
                 failedAttempts.Add((profile, result));
 
                 if (!configuration.EnableAutoFallback) break;
             }
 
             HandleApiError(failedAttempts, capturedMessage);
+            }
+            finally
+            {
+                ExitAutoRpProcessing();
+            }
         }
 
         private async Task SendAutoReplyPrompt(string capturedMessage, string senderName, XivChatType sourceType)
         {
+            if (!TryEnterAutoRpProcessing())
+            {
+                return;
+            }
+
             string finalRpSystemPrompt = GetSystemPrompt(senderName);
             var outputTarget = OutputTarget.GameChat;
             var removeLineBreaks = true;
@@ -237,6 +264,14 @@ namespace XIVAICompanion
             string historyName = (_openListenerModeBuffer && _mixedHistoryModeBuffer) ? "Multiple People" : senderName;
             var conversationHistory = GetHistoryForPlayer(historyName);
 
+            try
+            {
+                var delaySec = Math.Clamp(configuration.AutoRpConfig.InitialResponseDelaySeconds, 0.0f, 10.0f);
+                if (delaySec > 0.01f)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(delaySec));
+                }
+
             var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
 
             var profilesToTry = new List<ModelProfile>();
@@ -256,13 +291,22 @@ namespace XIVAICompanion
             foreach (var profile in profilesToTry)
             {
                 ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
-                if (result.WasSuccessful) return;
+                if (result.WasSuccessful)
+                {
+                    _lastRpResponseTimestamp = DateTime.Now;
+                    return;
+                }
                 failedAttempts.Add((profile, result));
 
                 if (!configuration.EnableAutoFallback) break;
             }
 
             HandleApiError(failedAttempts, capturedMessage);
+            }
+            finally
+            {
+                ExitAutoRpProcessing();
+            }
         }
 
         private async Task<ProviderResult> SendPromptInternal(string input, ModelProfile profile, bool isStateless, OutputTarget outputTarget, string systemPrompt,

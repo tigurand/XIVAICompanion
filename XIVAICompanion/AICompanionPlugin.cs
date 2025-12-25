@@ -18,6 +18,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Numerics;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using XIVAICompanion.Configurations;
 using XIVAICompanion.Emoting;
@@ -195,6 +196,7 @@ namespace XIVAICompanion
         private readonly bool[] _autoRpListenLsBuffers = new bool[8];
         private readonly bool[] _autoRpListenCwlsBuffers = new bool[8];
         private DateTime _lastRpResponseTimestamp = DateTime.MinValue;
+        private int _autoRpProcessingFlag = 0;
         private ulong _lastTargetId;
         private string _currentRpPartnerName = string.Empty;
         private readonly Queue<string> _chatMessageQueue = new();
@@ -490,7 +492,7 @@ namespace XIVAICompanion
 
             if (_chatMessageQueue.Count == 0) return;
 
-            var requiredChunkCooldownMs = Math.Max((int)(configuration.AutoRpConfig.InitialResponseDelaySeconds * 1000), 1000);
+            const int requiredChunkCooldownMs = 1000;
 
             if ((DateTime.Now - _lastQueuedMessageSentTimestamp).TotalMilliseconds >= requiredChunkCooldownMs)
             {
@@ -500,6 +502,15 @@ namespace XIVAICompanion
                 _lastQueuedMessageSentTimestamp = DateTime.Now;
             }
         }
+
+        private bool TryEnterAutoRpProcessing()
+            => Interlocked.CompareExchange(ref _autoRpProcessingFlag, 1, 0) == 0;
+
+        private void ExitAutoRpProcessing()
+            => Interlocked.Exchange(ref _autoRpProcessingFlag, 0);
+
+        private bool IsAutoRpProcessing()
+            => Volatile.Read(ref _autoRpProcessingFlag) == 1;
 
         private void OnLogin()
         {

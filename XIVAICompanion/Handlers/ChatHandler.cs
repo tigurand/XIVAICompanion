@@ -81,6 +81,7 @@ namespace XIVAICompanion
             if (_isAutoRpRunning && (isOpenListenerReply || (isTellReply && _isDevModeEnabled)))
             {
                 if (sender.TextValue.StartsWith("[CT]")) return;
+                if (IsAutoRpProcessing()) return;
                 if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
 
                 string cleanPlayerName = ParsePlayerNameFromRaw(sender.TextValue);
@@ -98,14 +99,13 @@ namespace XIVAICompanion
 
                 Task.Run(() => SendAutoReplyPrompt(replyMessageText, cleanPlayerName, type));
 
-                _lastRpResponseTimestamp = DateTime.Now;
-
                 return;
             }
 
             if (_isAutoRpRunning && IsRpChannelEnabled(type))
             {
                 if (string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName) return;
+                if (IsAutoRpProcessing()) return;
                 if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
 
                 var senderName = sender.TextValue;
@@ -124,7 +124,6 @@ namespace XIVAICompanion
                 _shouldScrollToBottom = true;
 
                 Task.Run(() => SendAutoRpPrompt(messageText, type));
-                _lastRpResponseTimestamp = DateTime.Now;
             }
         }
 
