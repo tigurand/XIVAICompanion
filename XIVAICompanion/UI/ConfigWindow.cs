@@ -250,7 +250,7 @@ namespace XIVAICompanion
                                 ConversationHistory = new List<Content> { new Content { Role = "user", Parts = new List<Part> { new Part { Text = "Say 'Connection Successful!'" } } } },
                                 MaxTokens = testProfile.MaxTokens,
                                 Temperature = 0.7,
-                                UseWebSearch = false // Disable search for connection test
+                                UseWebSearch = false
                             };
 
                             var result = await testProvider.SendPromptAsync(testRequest, testProfile);
@@ -318,7 +318,6 @@ namespace XIVAICompanion
                             configuration.ModelProfiles.Add(newProfile);
                             _selectedProfileIndex = configuration.ModelProfiles.Count - 1;
                             
-                            // Update buffers to match the new duplicate
                             _profileNameBuffer = newProfile.ProfileName;
                             _profileProviderBuffer = newProfile.ProviderType;
                             _profileBaseUrlBuffer = newProfile.BaseUrl;
@@ -609,6 +608,7 @@ namespace XIVAICompanion
                     ImGui.SameLine();
                     if (ImGui.Button("Save Profile"))
                     {
+                        Service.Log.Info($"[Persona] Save Profile clicked. SaveAs='{_saveAsNameBuffer}', SelectedPersonaIndex={_selectedPersonaIndex}, PersonaFolder='{_personaFolder.FullName}'");
                         if (string.IsNullOrWhiteSpace(_saveAsNameBuffer)) { /* Do nothing */ }
                         else if (_saveAsNameBuffer.Equals("<New Profile>", StringComparison.OrdinalIgnoreCase))
                         {
@@ -620,11 +620,13 @@ namespace XIVAICompanion
                             string filePath = Path.Combine(_personaFolder.FullName, _saveAsNameBuffer + ".json");
                             if (File.Exists(filePath))
                             {
+                                Service.Log.Info($"[Persona] Existing persona detected. Prompting overwrite. Path='{filePath}'");
                                 _showOverwriteConfirmation = true;
                                 ImGui.OpenPopup("Overwrite Confirmation");
                             }
                             else
                             {
+                                Service.Log.Info($"[Persona] No existing persona detected. Saving new. Path='{filePath}'");
                                 SavePersona(_saveAsNameBuffer);
                             }
                         }
@@ -636,6 +638,72 @@ namespace XIVAICompanion
                     if (ImGui.Button("Open Persona Folder"))
                     {
                         Util.OpenLink(_personaFolder.FullName);
+                    }
+
+                    if (_showInvalidNameConfirmation)
+                    {
+                        if (ImGui.BeginPopupModal("Invalid Name", ref _showInvalidNameConfirmation, ImGuiWindowFlags.AlwaysAutoResize))
+                        {
+                            ImGui.Text("'<New Profile>' is a reserved name and cannot be used.");
+                            ImGui.Separator();
+                            ImGui.Spacing();
+
+                            float buttonWidth = 120;
+                            float windowWidth = ImGui.GetWindowSize().X;
+                            float startX = (windowWidth - buttonWidth) * 0.5f;
+
+                            if (startX > 0)
+                            {
+                                ImGui.SetCursorPosX(startX);
+                            }
+                            if (ImGui.Button("OK", new Vector2(buttonWidth, 0)))
+                            {
+                                _showInvalidNameConfirmation = false;
+                                ImGui.CloseCurrentPopup();
+                            }
+
+                            ImGui.EndPopup();
+                        }
+                    }
+                    if (_showOverwriteConfirmation)
+                    {
+                        if (ImGui.BeginPopupModal("Overwrite Confirmation", ref _showOverwriteConfirmation, ImGuiWindowFlags.AlwaysAutoResize))
+                        {
+                            ImGui.Text($"The profile named '{_saveAsNameBuffer}' already exists.");
+                            ImGui.Text("Do you want to overwrite it?");
+                            ImGui.Separator();
+                            ImGui.Spacing();
+
+                            float buttonWidth = 120;
+                            float spacing = 10;
+                            float totalWidth = (buttonWidth * 2) + spacing;
+
+                            float windowWidth = ImGui.GetWindowSize().X;
+                            float startX = (windowWidth - totalWidth) * 0.5f;
+
+                            if (startX > 0)
+                            {
+                                ImGui.SetCursorPosX(startX);
+                            }
+
+                            if (ImGui.Button("Yes, Overwrite", new Vector2(buttonWidth, 0)))
+                            {
+                                Service.Log.Info($"[Persona] Overwrite confirmed. SaveAs='{_saveAsNameBuffer}'");
+                                SavePersona(_saveAsNameBuffer);
+                                _showOverwriteConfirmation = false;
+                                ImGui.CloseCurrentPopup();
+                            }
+
+                            ImGui.SameLine(0, spacing);
+
+                            if (ImGui.Button("No, Cancel", new Vector2(buttonWidth, 0)))
+                            {
+                                _showOverwriteConfirmation = false;
+                                ImGui.CloseCurrentPopup();
+                            }
+
+                            ImGui.EndPopup();
+                        }
                     }
 
                     ImGui.EndTabItem();
@@ -737,71 +805,6 @@ namespace XIVAICompanion
                 }
 
                 ImGui.EndTabBar();
-            }
-
-            if (_showInvalidNameConfirmation)
-            {
-                if (ImGui.BeginPopupModal("Invalid Name", ref _showInvalidNameConfirmation, ImGuiWindowFlags.AlwaysAutoResize))
-                {
-                    ImGui.Text("'<New Profile>' is a reserved name and cannot be used.");
-                    ImGui.Separator();
-                    ImGui.Spacing();
-
-                    float buttonWidth = 120;
-                    float windowWidth = ImGui.GetWindowSize().X;
-                    float startX = (windowWidth - buttonWidth) * 0.5f;
-
-                    if (startX > 0)
-                    {
-                        ImGui.SetCursorPosX(startX);
-                    }
-                    if (ImGui.Button("OK", new Vector2(buttonWidth, 0)))
-                    {
-                        _showInvalidNameConfirmation = false;
-                        ImGui.CloseCurrentPopup();
-                    }
-
-                    ImGui.EndPopup();
-                }
-            }
-            if (_showOverwriteConfirmation)
-            {
-                if (ImGui.BeginPopupModal("Overwrite Confirmation", ref _showOverwriteConfirmation, ImGuiWindowFlags.AlwaysAutoResize))
-                {
-                    ImGui.Text($"The profile named '{_saveAsNameBuffer}' already exists.");
-                    ImGui.Text("Do you want to overwrite it?");
-                    ImGui.Separator();
-                    ImGui.Spacing();
-
-                    float buttonWidth = 120;
-                    float spacing = 10;
-                    float totalWidth = (buttonWidth * 2) + spacing;
-
-                    float windowWidth = ImGui.GetWindowSize().X;
-                    float startX = (windowWidth - totalWidth) * 0.5f;
-
-                    if (startX > 0)
-                    {
-                        ImGui.SetCursorPosX(startX);
-                    }
-
-                    if (ImGui.Button("Yes, Overwrite", new Vector2(buttonWidth, 0)))
-                    {
-                        SavePersona(_saveAsNameBuffer);
-                        _showOverwriteConfirmation = false;
-                        ImGui.CloseCurrentPopup();
-                    }
-
-                    ImGui.SameLine(0, spacing);
-
-                    if (ImGui.Button("No, Cancel", new Vector2(buttonWidth, 0)))
-                    {
-                        _showOverwriteConfirmation = false;
-                        ImGui.CloseCurrentPopup();
-                    }
-
-                    ImGui.EndPopup();
-                }
             }
 
             ImGui.Separator();
