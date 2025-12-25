@@ -199,8 +199,11 @@ namespace XIVAICompanion
         private int _autoRpProcessingFlag = 0;
         private ulong _lastTargetId;
         private string _currentRpPartnerName = string.Empty;
-        private readonly Queue<string> _chatMessageQueue = new();
-        private DateTime _lastQueuedMessageSentTimestamp = DateTime.MinValue;
+        private readonly Queue<QueuedChatMessage> _chatMessageQueue = new();
+        private DateTime _lastQueuedMessageSentTimestampUtc = DateTime.MinValue;
+        private const int DefaultChatChunkCooldownMs = 1500;
+
+        private readonly record struct QueuedChatMessage(string Text, int MinDelayMs);
 
         private bool _openListenerModeBuffer;
         private bool _openListenerListenSayBuffer;
@@ -492,15 +495,32 @@ namespace XIVAICompanion
 
             if (_chatMessageQueue.Count == 0) return;
 
-            const int requiredChunkCooldownMs = 1000;
+            var nowUtc = DateTime.UtcNow;
 
-            if ((DateTime.Now - _lastQueuedMessageSentTimestamp).TotalMilliseconds >= requiredChunkCooldownMs)
+            var next = _chatMessageQueue.Peek();
+            int requiredChunkCooldownMs = Math.Max(250, next.MinDelayMs);
+
+            if ((nowUtc - _lastQueuedMessageSentTimestampUtc).TotalMilliseconds >= requiredChunkCooldownMs)
             {
-                var message = _chatMessageQueue.Dequeue();
-                Chat.SendMessage(message);
+                var message = _chatMessageQueue.Dequeue().Text;
 
-                _lastQueuedMessageSentTimestamp = DateTime.Now;
+                _lastQueuedMessageSentTimestampUtc = nowUtc;
+
+                try
+                {
+                    Chat.SendMessage(message);
+                }
+                catch (Exception ex)
+                {
+                    Service.Log.Error(ex, "[ChatQueue] Failed to send queued chat message.");
+                }
             }
+        }
+
+        private int GetAutoRpChunkCooldownMs()
+        {
+            int initialMs = (int)Math.Round(Math.Clamp(configuration.AutoRpConfig.InitialResponseDelaySeconds, 0.0f, 10.0f) * 1000.0f);
+            return Math.Max(DefaultChatChunkCooldownMs, initialMs);
         }
 
         private bool TryEnterAutoRpProcessing()

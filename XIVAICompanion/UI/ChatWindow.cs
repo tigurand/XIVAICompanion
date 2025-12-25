@@ -446,7 +446,7 @@ namespace XIVAICompanion
             }
         }
 
-        private void SendMessageToGameChat(string message, string? prefix = null, string? commandPrefix = null)
+        private void SendMessageToGameChat(string message, string? prefix = null, string? commandPrefix = null, bool isAutoRp = false)
         {
             try
             {
@@ -470,10 +470,12 @@ namespace XIVAICompanion
                 var chunks = SplitIntoChunksByBytes(message, maxContentBytes).ToList();
                 Service.Log.Info($"Sending message to chat in {chunks.Count} chunk(s) with command '{finalCommand}' and prefix '{finalPrefix}'.");
 
+                int perChunkDelayMs = isAutoRp ? GetAutoRpChunkCooldownMs() : DefaultChatChunkCooldownMs;
+
                 foreach (var chunk in chunks)
                 {
                     string finalMessage = finalCommand + finalPrefix + chunk;
-                    _chatMessageQueue.Enqueue(finalMessage);
+                    _chatMessageQueue.Enqueue(new QueuedChatMessage(finalMessage, perChunkDelayMs));
                 }
             }
             catch (Exception ex)

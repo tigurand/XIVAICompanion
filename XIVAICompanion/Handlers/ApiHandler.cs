@@ -507,7 +507,7 @@ namespace XIVAICompanion
                             if (configuration.AutoRpConfig.ReplyInSpecificChannel) commandPrefix = GetPrefixForChannelIndex(configuration.AutoRpConfig.SpecificReplyChannel);
                             else if (configuration.AutoRpConfig.AutoReplyToAllTells && replyChannel.HasValue && replyChannel.Value == XivChatType.TellIncoming) commandPrefix = "/r ";
                             else if (configuration.AutoRpConfig.ReplyInOriginalChannel && replyChannel.HasValue) commandPrefix = GetReplyPrefix(replyChannel.Value);
-                            SendMessageToGameChat(finalResponse, commandPrefix: commandPrefix);
+                            SendMessageToGameChat(finalResponse, commandPrefix: commandPrefix, isAutoRp: true);
                         });
                         break;
                     case OutputTarget.PluginDebug:
