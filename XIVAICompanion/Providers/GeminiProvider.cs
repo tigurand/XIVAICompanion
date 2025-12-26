@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -60,9 +61,9 @@ namespace XIVAICompanion.Providers
                 {
                     MaxOutputTokens = request.MaxTokens,
                     Temperature = request.Temperature,
-                    ThinkingConfig = request.ThinkingBudget.HasValue
-                        ? new ThinkingConfig { ThinkingBudget = request.ThinkingBudget.Value, IncludeThoughts = request.ShowThoughts }
-                        : null
+                    ThinkingConfig = request.IsThinkingEnabled
+                            ? new ThinkingConfig { ThinkingBudget = request.ThinkingBudget.Value, IncludeThoughts = request.ShowThoughts }
+                            : null
                 },
                 SafetySettings = new List<SafetySetting>
                 {
@@ -118,9 +119,12 @@ namespace XIVAICompanion.Providers
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("x-goog-api-key", profile.ApiKey);
 
+                var stopwatch = Stopwatch.StartNew();
                 var response = await _httpClient.SendAsync(requestMessage);
                 result.HttpResponse = response;
                 result.RawResponse = await response.Content.ReadAsStringAsync();
+                stopwatch.Stop();
+                result.ResponseTimeMs = stopwatch.ElapsedMilliseconds;
 
                 if (!string.IsNullOrEmpty(result.RawResponse))
                 {

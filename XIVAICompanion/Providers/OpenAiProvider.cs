@@ -2,6 +2,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -64,6 +65,38 @@ namespace XIVAICompanion.Providers
                 ["temperature"] = request.Temperature
             };
 
+            if (request.IsThinkingEnabled)
+            {
+                string baseUrlLower = baseUrl.ToLowerInvariant();
+                string modelId = profile.ModelId.ToLowerInvariant();
+
+                bool isOpenAi = baseUrlLower.Contains("openai.com");
+                bool isOpenRouter = baseUrlLower.Contains("openrouter.ai");
+                bool isGroq = baseUrlLower.Contains("groq.com");
+
+                if (isOpenAi || isOpenRouter)
+                {
+                    openAiRequest["effort"] = ProviderConstants.OpenAIReasoningEffort;
+                }
+                // Groq uses reasoning_format instead of reasoning_effort
+
+                if (request.ShowThoughts)
+                {
+                    if (isOpenAi)
+                    {
+                        openAiRequest["summary"] = "auto";
+                    }
+                    else if (isOpenRouter)
+                    {
+                        openAiRequest["exclude"] = false;
+                    }
+                    else if (isGroq)
+                    {
+                        openAiRequest["reasoning_format"] = "parsed";
+                    }
+                }
+            }
+
             if (request.UseWebSearch && !string.IsNullOrEmpty(profile.TavilyApiKey))
             {
                 var searchTool = new JObject
@@ -105,9 +138,12 @@ namespace XIVAICompanion.Providers
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", profile.ApiKey);
 
+                var stopwatch = Stopwatch.StartNew();
                 var response = await _httpClient.SendAsync(requestMessage);
                 result.HttpResponse = response;
                 result.RawResponse = await response.Content.ReadAsStringAsync();
+                stopwatch.Stop();
+                result.ResponseTimeMs = stopwatch.ElapsedMilliseconds;
 
                 if (!string.IsNullOrEmpty(result.RawResponse))
                 {
@@ -122,6 +158,15 @@ namespace XIVAICompanion.Providers
 
                 result.ResponseText = (string?)result.ResponseJson?.SelectToken("choices[0].message.content");
 
+                if (request.ShowThoughts && baseUrl.ToLowerInvariant().Contains("groq.com"))
+                {
+                    string? reasoning = (string?)result.ResponseJson?.SelectToken("choices[0].message.reasoning");
+                    if (!string.IsNullOrEmpty(reasoning))
+                    {
+                        result.ResponseText = $"{reasoning}\n\n{result.ResponseText}";
+                    }
+                }
+
                 result.PromptTokens = (int?)result.ResponseJson?.SelectToken("usage.prompt_tokens") ?? 0;
                 result.ResponseTokens = (int?)result.ResponseJson?.SelectToken("usage.completion_tokens") ?? 0;
                 result.TotalTokens = (int?)result.ResponseJson?.SelectToken("usage.total_tokens") ?? (result.PromptTokens + result.ResponseTokens);
@@ -130,7 +175,7 @@ namespace XIVAICompanion.Providers
 
                 result.WasSuccessful = !string.IsNullOrEmpty(result.ResponseText);
 
-                if (finishReason == "length") result.WasSuccessful = false; // Similar to MAX_TOKENS fallback logic
+                if (finishReason == "length") result.WasSuccessful = false;
 
                 return result;
             }

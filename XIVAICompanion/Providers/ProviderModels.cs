@@ -16,6 +16,7 @@ namespace XIVAICompanion.Providers
         public bool UseWebSearch { get; set; }
         public int? ThinkingBudget { get; set; }
         public bool ShowThoughts { get; set; }
+        public bool IsThinkingEnabled { get; set; }
     }
 
     public class ProviderResult
@@ -40,12 +41,18 @@ namespace XIVAICompanion.Providers
         // Provider-specific metadata for better error reporting
         public string? FinishReason { get; set; }
         public string? BlockReason { get; set; }
+        public long ResponseTimeMs { get; set; }
     }
 
     public enum AiProviderType
     {
         Gemini,
         OpenAiCompatible
+    }
+
+    public static class ProviderConstants
+    {
+        public const string OpenAIReasoningEffort = "High";
     }
 
     public class ModelProfile

@@ -71,6 +71,7 @@ namespace XIVAICompanion
         private const int minResponseTokens = 512;
         private const int maxResponseTokens = 8192;
         private const int defaultThinkingBudget = minResponseTokens;
+        private const string openAIReasoningEffort = "high";
 
         private static readonly HttpClient httpClient = new HttpClient();
 

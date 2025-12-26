@@ -721,10 +721,10 @@ namespace XIVAICompanion
                     ImGui.SetCursorPosX(380.0f);
                     ImGui.Checkbox("Show Additional Info", ref _showAdditionalInfoBuffer);
 
-                    ImGui.Checkbox("Show Thoughts (Gemini)", ref _showThoughtsBuffer);
+                    ImGui.Checkbox("Show Thoughts", ref _showThoughtsBuffer);
                     if (ImGui.IsItemHovered())
                     {
-                        ImGui.SetTooltip("Show AI thoughts on answers (Only supported by Gemini models with thinking capabilities).");
+                        ImGui.SetTooltip("Show AI thoughts on answers (Only when thinking mode is enabled).");
                     }
                     ImGui.SameLine();
                     ImGui.SetCursorPosX(380.0f);
