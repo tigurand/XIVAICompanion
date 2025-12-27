@@ -61,7 +61,7 @@ namespace XIVAICompanion.Providers
                 {
                     MaxOutputTokens = request.MaxTokens,
                     Temperature = request.Temperature,
-                    ThinkingConfig = request.IsThinkingEnabled
+                    ThinkingConfig = request.IsThinkingEnabled && request.ThinkingBudget.HasValue
                             ? new ThinkingConfig { ThinkingBudget = request.ThinkingBudget.Value, IncludeThoughts = request.ShowThoughts }
                             : null
                 },

@@ -547,7 +547,7 @@ namespace XIVAICompanion
                 _hasGreetedThisSession = true;
                 string greetingPrompt = configuration.LoginGreetingPrompt;
                 Service.Log.Info("Sending login greeting. Prompt: {Prompt}", greetingPrompt);
-                Task.Run(() => SendPrompt(greetingPrompt, isStateless: true, outputTarget: OutputTarget.PluginDebug, partnerName: GetPlayerDisplayName(), isFreshLogin: _freshLoginBuffer));
+                Task.Run(() => SendPrompt(greetingPrompt, isStateless: true, outputTarget: OutputTarget.PluginDebug, partnerName: GetPlayerDisplayName(), isLogin: true));
             }
         }
 

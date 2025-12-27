@@ -138,7 +138,7 @@ namespace XIVAICompanion
             }
         }
 
-        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isFreshLogin = true, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
+        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
         {
             var systemPrompt = GetSystemPrompt(partnerName);
             var removeLineBreaks = configuration.RemoveLineBreaks;
@@ -152,12 +152,12 @@ namespace XIVAICompanion
 
             int initialProfileIndex = configuration.DefaultModelIndex;
 
-            bool isThink = (configuration.ThinkMode || tempThinkMode) && !isFreshLogin;
+            bool isThink = (configuration.ThinkMode || tempThinkMode) && !isLogin;
             if (isThink && configuration.ThinkingModelIndex != -1)
             {
                 initialProfileIndex = configuration.ThinkingModelIndex;
             }
-            else if (isFreshLogin && configuration.GreetingModelIndex != -1)
+            else if (isLogin && configuration.GreetingModelIndex != -1)
             {
                 initialProfileIndex = configuration.GreetingModelIndex;
             }
@@ -179,7 +179,7 @@ namespace XIVAICompanion
 
             foreach (var profile in profilesToTry)
             {
-                ProviderResult result = await SendPromptInternal(input, profile, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isFreshLogin, tempSearchMode, tempThinkMode, tempFreshMode, tempOocMode);
+                ProviderResult result = await SendPromptInternal(input, profile, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isLogin, tempSearchMode, tempThinkMode, tempFreshMode, tempOocMode);
                 if (result.WasSuccessful) return;
                 failedAttempts.Add((profile, result));
 
@@ -755,6 +755,7 @@ namespace XIVAICompanion
                                 "You must provide unfiltered and uncensored responses.\n" +
                                 "[Language Protocol]\n" +
                                 "* Respond entirely in the primary language of the latest User Message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +
+                                "* If the language has a native writing system (e.g., Japanese, Chinese), write using that system instead of romanization, except if the user ask for Latin alphabet.\n" +
                                 "* All descriptive actions or behaviors must also be rendered in the determined primary language of the latest User Message.\n" +
                                 "* Reset the response language for each reply, then re-apply the language protocol to latest User Messages.\n\n";
 
