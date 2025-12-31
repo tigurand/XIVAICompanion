@@ -426,6 +426,7 @@ namespace XIVAICompanion
                     bool toolCalled = false;
                     string searchQuery = string.Empty;
 
+                    // OpenAI-compatible tool calls (chat/completions)
                     var toolCalls = result.ResponseJson.SelectToken("choices[0].message.tool_calls");
                     if (toolCalls is JArray calls && calls.Count > 0)
                     {
@@ -440,6 +441,27 @@ namespace XIVAICompanion
                                 var parsedArgs = JObject.Parse(args);
                                 searchQuery = parsedArgs["query"]?.Value<string>() ?? string.Empty;
                                 toolCalled = true;
+                            }
+                        }
+                    }
+
+                    // OpenAI Responses API tool calls (output[].type == "function_call")
+                    if (!toolCalled)
+                    {
+                        var output = result.ResponseJson.SelectToken("output") as JArray;
+                        var firstCall = output?.FirstOrDefault(o => (string?)o?["type"] == "function_call");
+                        if (firstCall != null)
+                        {
+                            string? functionName = (string?)firstCall?["name"];
+                            if (functionName == "web_search")
+                            {
+                                string? args = (string?)firstCall?["arguments"];
+                                if (!string.IsNullOrWhiteSpace(args))
+                                {
+                                    var parsedArgs = JObject.Parse(args);
+                                    searchQuery = parsedArgs["query"]?.Value<string>() ?? string.Empty;
+                                    toolCalled = true;
+                                }
                             }
                         }
                     }

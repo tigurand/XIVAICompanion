@@ -52,7 +52,7 @@ namespace XIVAICompanion.Providers
 
     public static class ProviderConstants
     {
-        public const string OpenAIReasoningEffort = "High";
+        public const string OpenAIReasoningEffort = "high";
     }
 
     public class ModelProfile

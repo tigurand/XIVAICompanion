@@ -71,7 +71,6 @@ namespace XIVAICompanion
         private const int minResponseTokens = 512;
         private const int maxResponseTokens = 8192;
         private const int defaultThinkingBudget = minResponseTokens;
-        private const string openAIReasoningEffort = "high";
 
         private static readonly HttpClient httpClient = new HttpClient();
 
@@ -911,7 +910,7 @@ namespace XIVAICompanion
         {
             var seStringBuilder = new SeStringBuilder();
 
-            seStringBuilder.AddUiForeground($"{message}", 62);
+            seStringBuilder.AddUiForeground($"{message}", 540);
 
             Service.ChatGui.Print(seStringBuilder.Build());
         }

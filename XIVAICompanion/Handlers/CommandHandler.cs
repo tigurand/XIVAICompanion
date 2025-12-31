@@ -518,6 +518,7 @@ namespace XIVAICompanion
                     _addressingModeBuffer = persona.AddressingMode;
                     _customUserNameBuffer = persona.CustomUserName;
                     _systemPromptBuffer = persona.SystemPrompt;
+                    _temperatureBuffer = persona.Temperature;
                     _minionToReplaceBuffer = persona.MinionToReplace;
                     _npcGlamourerDesignGuidBuffer = persona.NpcGlamourerDesignGuid;
 
