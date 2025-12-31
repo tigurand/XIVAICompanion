@@ -380,6 +380,7 @@ namespace XIVAICompanion
                         }
                         ImGui.EndCombo();
                     }
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Choose model with reasoning ability.");
 
                     ImGui.Text("Greeting Model:");
                     ImGui.SetNextItemWidth(610);
@@ -724,7 +725,7 @@ namespace XIVAICompanion
                     ImGui.Checkbox("Show Thoughts", ref _showThoughtsBuffer);
                     if (ImGui.IsItemHovered())
                     {
-                        ImGui.SetTooltip("Show AI thoughts on answers (Only when thinking mode is enabled).");
+                        ImGui.SetTooltip("Show AI thoughts on answers when thinking mode is enabled.\nNot all models are supported.");
                     }
                     ImGui.SameLine();
                     ImGui.SetCursorPosX(380.0f);
