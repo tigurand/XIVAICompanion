@@ -17,6 +17,10 @@ You can use either Gemini, ChatGPT, or any OpenAI-compatible API.<br />
 Please note that some features may work or not for certain AI models.<br />
 **Warning:** Avoid sharing sensitive, confidential, or personal information with this AI—especially if your interactions may be used for training. Always review the provider’s terms first.
 
+**Recommended Free API Providers:**<br />
+[Groq](https://groq.com/)<br />
+[Cerebras](https://www.cerebras.ai/)
+
 # Features
 **Chat With AI**<br />
 You can set the name of your AI and how your AI will address you. You can also use prompt for advanced persona. It’s your decision whether to use a strictly moderated AI or a more flexible one. I'm not your government, I'm also not your credit card company, so I don't force censorship to you.<br />
