@@ -67,5 +67,8 @@ namespace XIVAICompanion.Providers
         // Tavily Web Search integration
         public bool UseTavilyInstead { get; set; } = false;
         public string TavilyApiKey { get; set; } = string.Empty;
+
+        // Fallback settings
+        public bool UseAsFallback { get; set; } = true;
     }
 }

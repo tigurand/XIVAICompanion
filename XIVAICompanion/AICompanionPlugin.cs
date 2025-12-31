@@ -98,6 +98,7 @@ namespace XIVAICompanion
         private int _profileMaxTokensBuffer = 1024;
         private bool _profileUseTavilyInsteadBuffer = false;
         private string _profileTavilyApiKeyBuffer = string.Empty;
+        private bool _profileUseAsFallbackBuffer = true;
 
         private int _defaultModelProfileIndexBuffer = -1;
         private int _thinkingModelProfileIndexBuffer = -1;

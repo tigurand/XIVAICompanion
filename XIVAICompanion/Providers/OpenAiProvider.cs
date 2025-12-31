@@ -22,6 +22,16 @@ namespace XIVAICompanion.Providers
             _httpClient = httpClient;
         }
 
+        static JObject GetReasoning(JObject request)
+        {
+            if (request["reasoning"] is not JObject reasoning)
+            {
+                reasoning = new JObject();
+                request["reasoning"] = reasoning;
+            }
+            return reasoning;
+        }
+
         public async Task<ProviderResult> SendPromptAsync(ProviderRequest request, ModelProfile profile)
         {
             return await SendPromptAsync(request, profile, false);
@@ -43,6 +53,8 @@ namespace XIVAICompanion.Providers
             }
 
             var host = new OpenAiCompatibleHostInfo(baseUrl);
+
+            var modelInfo = new OpenAiCompatibleModelInfo(profile.ModelId);
 
             var messages = new List<object>();
 
@@ -105,43 +117,52 @@ namespace XIVAICompanion.Providers
 
             if (request.IsThinkingEnabled)
             {
-                if (host.IsOpenAi || host.IsHuggingFace)
+                if (host.IsOpenAi || host.IsHuggingFace || host.IsOpenRouter)
                 {
-                    if (openAiRequest["reasoning"] is not JObject reasoning)
-                    {
-                        reasoning = new JObject();
-                        openAiRequest["reasoning"] = reasoning;
-                    }
+                    var reasoning = GetReasoning(openAiRequest);
                     reasoning["effort"] = ProviderConstants.OpenAIReasoningEffort;
-                }
-                else if (host.IsOpenRouter)
-                {
-                    openAiRequest["effort"] = ProviderConstants.OpenAIReasoningEffort;
+
+                    if (request.ShowThoughts)
+                    {
+                        if (host.IsOpenAi || host.IsHuggingFace)
+                        {
+                            reasoning["summary"] = "auto";
+                        }
+                        else if (host.IsOpenRouter)
+                        {
+                            reasoning["exclude"] = false;
+                        }
+                    }
                 }
                 else if (host.IsGroq)
                 {
                     openAiRequest["reasoning_effort"] = ProviderConstants.OpenAIReasoningEffort;
-                }
 
-                if (request.ShowThoughts)
-                {
-                    if (host.IsOpenAi || host.IsHuggingFace)
-                    {
-                        if (openAiRequest["reasoning"] is not JObject reasoning)
-                        {
-                            reasoning = new JObject();
-                            openAiRequest["reasoning"] = reasoning;
-                        }
-                        reasoning["summary"] = "auto";
-                    }
-                    else if (host.IsOpenRouter)
-                    {
-                        openAiRequest["exclude"] = false;
-                    }
-                    else if (host.IsGroq)
+                    if (request.ShowThoughts)
                     {
                         openAiRequest["reasoning_format"] = "parsed";
                     }
+                }
+                else if (host.IsCerebras)
+                {
+                    if (modelInfo.IsGPTOSS)
+                        openAiRequest["reasoning_effort"] = ProviderConstants.OpenAIReasoningEffort;
+                    else if (modelInfo.IsGLM)
+                        openAiRequest["disable_reasoning"] = "false";
+                }
+            }
+            else
+            {
+                if (host.IsOpenRouter)
+                {
+                    var reasoning = GetReasoning(openAiRequest);
+                    reasoning["effort"] = "none";
+                    reasoning["exclude"] = true;
+                }
+                else if (host.IsCerebras)
+                {
+                    if (modelInfo.IsGLM)
+                        openAiRequest["disable_reasoning"] = "true";
                 }
             }
 
@@ -284,12 +305,12 @@ namespace XIVAICompanion.Providers
                 {
                     result.ResponseText = (string?)result.ResponseJson?.SelectToken("choices[0].message.content");
 
-                    if (request.ShowThoughts && host.IsGroq)
+                    if (request.ShowThoughts && (host.IsGroq || host.IsOpenRouter || host.IsCerebras))
                     {
                         string? reasoning = (string?)result.ResponseJson?.SelectToken("choices[0].message.reasoning");
                         if (!string.IsNullOrEmpty(reasoning))
                         {
-                            result.ResponseText = $"{reasoning}\n\n{result.ResponseText}";
+                            result.ResponseText = string.IsNullOrEmpty(result.ResponseText) ? reasoning : $"{reasoning}\n\n{result.ResponseText}";
                         }
                     }
 
@@ -299,7 +320,7 @@ namespace XIVAICompanion.Providers
 
                     string? finishReason = (string?)result.ResponseJson?.SelectToken("choices[0].finish_reason");
                     result.WasSuccessful = !string.IsNullOrEmpty(result.ResponseText);
-                    if (finishReason == "length") result.WasSuccessful = false;
+                    if (finishReason == "length" && string.IsNullOrEmpty(result.ResponseText)) result.WasSuccessful = false;
                 }
 
                 return result;

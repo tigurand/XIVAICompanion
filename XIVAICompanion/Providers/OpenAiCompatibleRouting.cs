@@ -8,6 +8,7 @@ namespace XIVAICompanion.Providers
         public readonly bool IsOpenRouter;
         public readonly bool IsGroq;
         public readonly bool IsHuggingFace;
+        public readonly bool IsCerebras;
 
         public OpenAiCompatibleHostInfo(string? baseUrl)
         {
@@ -16,9 +17,23 @@ namespace XIVAICompanion.Providers
             IsOpenRouter = baseUrlLower.Contains("openrouter.ai");
             IsGroq = baseUrlLower.Contains("groq.com");
             IsHuggingFace = baseUrlLower.Contains("huggingface.co");
+            IsCerebras = baseUrlLower.Contains("cerebras.ai");
         }
 
         public bool UsesResponsesApi => IsOpenAi || IsHuggingFace;
+    }
+
+    internal readonly struct OpenAiCompatibleModelInfo
+    {
+        public readonly bool IsGPTOSS;
+        public readonly bool IsGLM;
+
+        public OpenAiCompatibleModelInfo(string? modelId)
+        {
+            string modelIdLower = (modelId ?? string.Empty).ToLowerInvariant();
+            IsGPTOSS = modelIdLower.Contains("gpt-oss");
+            IsGLM = modelIdLower.Contains("glm");
+        }
     }
 
     internal static class OpenAiCompatibleRouting

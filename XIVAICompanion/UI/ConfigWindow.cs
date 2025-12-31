@@ -120,33 +120,35 @@ namespace XIVAICompanion
                             if (ImGui.Selectable(profileNames[i], isSelected))
                             {
                                 _selectedProfileIndex = i - 1;
-                                if (_selectedProfileIndex == -1)
-                                {
-                                    _profileNameBuffer = "New Profile";
-                                    _profileProviderBuffer = AiProviderType.Gemini;
-                                    _profileBaseUrlBuffer = string.Empty;
-                                    _profileApiKeyBuffer = string.Empty;
-                                    _profileModelIdBuffer = string.Empty;
-                                    _profileMaxTokensBuffer = 1024;
-                                    _profileUseTavilyInsteadBuffer = false;
-                                    _profileTavilyApiKeyBuffer = string.Empty;
-                                }
-                                else
-                                {
-                                    var profile = configuration.ModelProfiles[_selectedProfileIndex];
-                                    _profileNameBuffer = profile.ProfileName;
-                                    _profileProviderBuffer = profile.ProviderType;
-                                    _profileBaseUrlBuffer = profile.BaseUrl;
-                                    _profileApiKeyBuffer = profile.ApiKey;
-                                    _profileModelIdBuffer = profile.ModelId;
-                                    _profileMaxTokensBuffer = profile.MaxTokens;
-                                    _profileUseTavilyInsteadBuffer = profile.UseTavilyInstead;
-                                    _profileTavilyApiKeyBuffer = profile.TavilyApiKey;
-                                }
-                            }
-                        }
-                        ImGui.EndCombo();
-                    }
+                                 if (_selectedProfileIndex == -1)
+                                 {
+                                     _profileNameBuffer = "New Profile";
+                                     _profileProviderBuffer = AiProviderType.Gemini;
+                                     _profileBaseUrlBuffer = string.Empty;
+                                     _profileApiKeyBuffer = string.Empty;
+                                     _profileModelIdBuffer = string.Empty;
+                                     _profileMaxTokensBuffer = 1024;
+                                     _profileUseTavilyInsteadBuffer = false;
+                                     _profileTavilyApiKeyBuffer = string.Empty;
+                                     _profileUseAsFallbackBuffer = true;
+                                 }
+                                 else
+                                 {
+                                     var profile = configuration.ModelProfiles[_selectedProfileIndex];
+                                     _profileNameBuffer = profile.ProfileName;
+                                     _profileProviderBuffer = profile.ProviderType;
+                                     _profileBaseUrlBuffer = profile.BaseUrl;
+                                     _profileApiKeyBuffer = profile.ApiKey;
+                                     _profileModelIdBuffer = profile.ModelId;
+                                     _profileMaxTokensBuffer = profile.MaxTokens;
+                                     _profileUseTavilyInsteadBuffer = profile.UseTavilyInstead;
+                                     _profileTavilyApiKeyBuffer = profile.TavilyApiKey;
+                                     _profileUseAsFallbackBuffer = profile.UseAsFallback;
+                                 }
+                             }
+                         }
+                         ImGui.EndCombo();
+                     }
 
                     ImGui.Text("Profile Name:");
                     ImGui.SetNextItemWidth(610);
@@ -221,17 +223,18 @@ namespace XIVAICompanion
                         Task.Run(async () =>
                         {
                             PrintSystemMessage(">> Testing connection...");
-                            ModelProfile testProfile = new ModelProfile
-                            {
-                                ProfileName = _profileNameBuffer,
-                                ProviderType = _profileProviderBuffer,
-                                BaseUrl = _profileBaseUrlBuffer,
-                                ApiKey = _profileApiKeyBuffer,
-                                ModelId = _profileModelIdBuffer,
-                                MaxTokens = _profileMaxTokensBuffer,
-                                UseTavilyInstead = _profileUseTavilyInsteadBuffer,
-                                TavilyApiKey = _profileTavilyApiKeyBuffer
-                            };
+                             ModelProfile testProfile = new ModelProfile
+                             {
+                                 ProfileName = _profileNameBuffer,
+                                 ProviderType = _profileProviderBuffer,
+                                 BaseUrl = _profileBaseUrlBuffer,
+                                 ApiKey = _profileApiKeyBuffer,
+                                 ModelId = _profileModelIdBuffer,
+                                 MaxTokens = _profileMaxTokensBuffer,
+                                 UseTavilyInstead = _profileUseTavilyInsteadBuffer,
+                                 TavilyApiKey = _profileTavilyApiKeyBuffer,
+                                 UseAsFallback = _profileUseAsFallbackBuffer
+                             };
 
                             if (string.IsNullOrEmpty(testProfile.ModelId))
                             {
@@ -267,24 +270,27 @@ namespace XIVAICompanion
                                 }
                             }
                         });
-                    }
+                     }
 
-                    ImGui.Spacing();
-                    if (ImGui.Button("Save Profile##ModelProfile"))
-                    {
-                        if (!string.IsNullOrWhiteSpace(_profileNameBuffer))
-                        {
-                            var newProfile = new ModelProfile
-                            {
-                                ProfileName = _profileNameBuffer,
-                                ProviderType = _profileProviderBuffer,
-                                BaseUrl = _profileBaseUrlBuffer,
-                                ApiKey = _profileApiKeyBuffer,
-                                ModelId = _profileModelIdBuffer,
-                                MaxTokens = _profileMaxTokensBuffer,
-                                UseTavilyInstead = _profileUseTavilyInsteadBuffer,
-                                TavilyApiKey = _profileTavilyApiKeyBuffer
-                            };
+                     ImGui.Checkbox("Use as fallback model?", ref _profileUseAsFallbackBuffer);
+
+                     ImGui.Spacing();
+                     if (ImGui.Button("Save Profile##ModelProfile"))
+                     {
+                         if (!string.IsNullOrWhiteSpace(_profileNameBuffer))
+                         {
+                             var newProfile = new ModelProfile
+                             {
+                                 ProfileName = _profileNameBuffer,
+                                 ProviderType = _profileProviderBuffer,
+                                 BaseUrl = _profileBaseUrlBuffer,
+                                 ApiKey = _profileApiKeyBuffer,
+                                 ModelId = _profileModelIdBuffer,
+                                 MaxTokens = _profileMaxTokensBuffer,
+                                 UseTavilyInstead = _profileUseTavilyInsteadBuffer,
+                                 TavilyApiKey = _profileTavilyApiKeyBuffer,
+                                 UseAsFallback = _profileUseAsFallbackBuffer
+                             };
 
                             if (_selectedProfileIndex == -1)
                             {
@@ -303,33 +309,35 @@ namespace XIVAICompanion
                     {
                         if (_selectedProfileIndex != -1)
                         {
-                            var profileToCopy = configuration.ModelProfiles[_selectedProfileIndex];
-                            var newProfile = new ModelProfile
-                            {
-                                ProfileName = profileToCopy.ProfileName + " - Copy",
-                                ProviderType = profileToCopy.ProviderType,
-                                BaseUrl = profileToCopy.BaseUrl,
-                                ApiKey = profileToCopy.ApiKey,
-                                ModelId = profileToCopy.ModelId,
-                                MaxTokens = profileToCopy.MaxTokens,
-                                UseTavilyInstead = profileToCopy.UseTavilyInstead,
-                                TavilyApiKey = profileToCopy.TavilyApiKey
-                            };
-                            configuration.ModelProfiles.Add(newProfile);
-                            _selectedProfileIndex = configuration.ModelProfiles.Count - 1;
-                            
-                            _profileNameBuffer = newProfile.ProfileName;
-                            _profileProviderBuffer = newProfile.ProviderType;
-                            _profileBaseUrlBuffer = newProfile.BaseUrl;
-                            _profileApiKeyBuffer = newProfile.ApiKey;
-                            _profileModelIdBuffer = newProfile.ModelId;
-                            _profileMaxTokensBuffer = newProfile.MaxTokens;
-                            _profileUseTavilyInsteadBuffer = newProfile.UseTavilyInstead;
-                            _profileTavilyApiKeyBuffer = newProfile.TavilyApiKey;
-                            
-                            configuration.Save();
-                        }
-                    }
+                         var profileToCopy = configuration.ModelProfiles[_selectedProfileIndex];
+                         var newProfile = new ModelProfile
+                         {
+                             ProfileName = profileToCopy.ProfileName + " - Copy",
+                             ProviderType = profileToCopy.ProviderType,
+                             BaseUrl = profileToCopy.BaseUrl,
+                             ApiKey = profileToCopy.ApiKey,
+                             ModelId = profileToCopy.ModelId,
+                             MaxTokens = profileToCopy.MaxTokens,
+                             UseTavilyInstead = profileToCopy.UseTavilyInstead,
+                             TavilyApiKey = profileToCopy.TavilyApiKey,
+                             UseAsFallback = profileToCopy.UseAsFallback
+                         };
+                         configuration.ModelProfiles.Add(newProfile);
+                         _selectedProfileIndex = configuration.ModelProfiles.Count - 1;
+                         
+                         _profileNameBuffer = newProfile.ProfileName;
+                         _profileProviderBuffer = newProfile.ProviderType;
+                         _profileBaseUrlBuffer = newProfile.BaseUrl;
+                         _profileApiKeyBuffer = newProfile.ApiKey;
+                         _profileModelIdBuffer = newProfile.ModelId;
+                         _profileMaxTokensBuffer = newProfile.MaxTokens;
+                         _profileUseTavilyInsteadBuffer = newProfile.UseTavilyInstead;
+                         _profileTavilyApiKeyBuffer = newProfile.TavilyApiKey;
+                         _profileUseAsFallbackBuffer = newProfile.UseAsFallback;
+                         
+                         configuration.Save();
+                     }
+                 }
                     ImGui.SameLine();
                     if (ImGui.Button("Delete Profile##ModelProfile"))
                     {

@@ -162,14 +162,20 @@ namespace XIVAICompanion
                 initialProfileIndex = configuration.GreetingModelIndex;
             }
 
-            if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
-            {
-                for (int i = 0; i < configuration.ModelProfiles.Count; i++)
+             if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
+             {
+                profilesToTry.Add(configuration.ModelProfiles[initialProfileIndex]);
+
+                for (int i = 1; i < configuration.ModelProfiles.Count; i++)
                 {
                     int idx = (initialProfileIndex + i) % configuration.ModelProfiles.Count;
-                    profilesToTry.Add(configuration.ModelProfiles[idx]);
+                    var candidate = configuration.ModelProfiles[idx];
+                    if (candidate.UseAsFallback)
+                    {
+                        profilesToTry.Add(candidate);
+                    }
                 }
-            }
+             }
 
             if (profilesToTry.Count == 0)
             {
@@ -217,14 +223,20 @@ namespace XIVAICompanion
             var profilesToTry = new List<ModelProfile>();
             int initialProfileIndex = configuration.DefaultModelIndex;
 
-            if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
-            {
-                for (int i = 0; i < configuration.ModelProfiles.Count; i++)
+             if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
+             {
+                profilesToTry.Add(configuration.ModelProfiles[initialProfileIndex]);
+
+                for (int i = 1; i < configuration.ModelProfiles.Count; i++)
                 {
                     int idx = (initialProfileIndex + i) % configuration.ModelProfiles.Count;
-                    profilesToTry.Add(configuration.ModelProfiles[idx]);
+                    var candidate = configuration.ModelProfiles[idx];
+                    if (candidate.UseAsFallback)
+                    {
+                        profilesToTry.Add(candidate);
+                    }
                 }
-            }
+             }
 
             if (profilesToTry.Count == 0) return;
 
@@ -277,14 +289,20 @@ namespace XIVAICompanion
             var profilesToTry = new List<ModelProfile>();
             int initialProfileIndex = configuration.DefaultModelIndex;
 
-            if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
-            {
-                for (int i = 0; i < configuration.ModelProfiles.Count; i++)
+             if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
+             {
+                profilesToTry.Add(configuration.ModelProfiles[initialProfileIndex]);
+
+                for (int i = 1; i < configuration.ModelProfiles.Count; i++)
                 {
                     int idx = (initialProfileIndex + i) % configuration.ModelProfiles.Count;
-                    profilesToTry.Add(configuration.ModelProfiles[idx]);
+                    var candidate = configuration.ModelProfiles[idx];
+                    if (candidate.UseAsFallback)
+                    {
+                        profilesToTry.Add(candidate);
+                    }
                 }
-            }
+             }
 
             if (profilesToTry.Count == 0) return;
 
