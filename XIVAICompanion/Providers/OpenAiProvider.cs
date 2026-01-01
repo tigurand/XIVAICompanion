@@ -147,22 +147,8 @@ namespace XIVAICompanion.Providers
                 {
                     if (modelInfo.IsGPTOSS)
                         openAiRequest["reasoning_effort"] = ProviderConstants.OpenAIReasoningEffort;
-                    else if (modelInfo.IsGLM)
+                    else if (modelInfo.IsGLM || modelInfo.IsQwen)
                         openAiRequest["disable_reasoning"] = "false";
-                }
-            }
-            else
-            {
-                if (host.IsOpenRouter)
-                {
-                    var reasoning = GetReasoning(openAiRequest);
-                    reasoning["effort"] = "none";
-                    reasoning["exclude"] = true;
-                }
-                else if (host.IsCerebras)
-                {
-                    if (modelInfo.IsGLM)
-                        openAiRequest["disable_reasoning"] = "true";
                 }
             }
 
@@ -305,7 +291,7 @@ namespace XIVAICompanion.Providers
                 {
                     result.ResponseText = (string?)result.ResponseJson?.SelectToken("choices[0].message.content");
 
-                    if (request.ShowThoughts && (host.IsGroq || host.IsOpenRouter || host.IsCerebras))
+                    if (request.IsThinkingEnabled && request.ShowThoughts && (host.IsGroq || host.IsOpenRouter || host.IsCerebras))
                     {
                         string? reasoning = (string?)result.ResponseJson?.SelectToken("choices[0].message.reasoning");
                         if (!string.IsNullOrEmpty(reasoning))

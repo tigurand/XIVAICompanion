@@ -27,12 +27,25 @@ namespace XIVAICompanion.Providers
     {
         public readonly bool IsGPTOSS;
         public readonly bool IsGLM;
+        public readonly bool IsQwen;
+        public readonly bool IsQwen235;
 
         public OpenAiCompatibleModelInfo(string? modelId)
         {
             string modelIdLower = (modelId ?? string.Empty).ToLowerInvariant();
             IsGPTOSS = modelIdLower.Contains("gpt-oss");
             IsGLM = modelIdLower.Contains("glm");
+            if (modelIdLower.Contains("qwen"))
+            { 
+                if (modelIdLower.Contains("qwen-3-235b"))
+                {
+                    IsQwen235 = true;
+                }
+                else
+                {
+                    IsQwen = true;
+                }
+            }
         }
     }
 
