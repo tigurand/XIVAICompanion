@@ -35,17 +35,8 @@ namespace XIVAICompanion.Providers
             string modelIdLower = (modelId ?? string.Empty).ToLowerInvariant();
             IsGPTOSS = modelIdLower.Contains("gpt-oss");
             IsGLM = modelIdLower.Contains("glm");
-            if (modelIdLower.Contains("qwen"))
-            { 
-                if (modelIdLower.Contains("qwen-3-235b"))
-                {
-                    IsQwen235 = true;
-                }
-                else
-                {
-                    IsQwen = true;
-                }
-            }
+            IsQwen = modelIdLower.Contains("qwen") && !modelIdLower.Contains("qwen-3-235b");
+            IsQwen235 = modelIdLower.Contains("qwen-3-235b");
         }
     }
 

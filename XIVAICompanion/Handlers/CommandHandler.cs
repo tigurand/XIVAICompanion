@@ -1,4 +1,8 @@
-﻿using ECommons.Automation;
+﻿using Dalamud.Game.ClientState.Objects.Types;
+using Dalamud.Plugin;
+using Dalamud.Plugin.Ipc;
+using Dalamud.Plugin.Ipc.Exceptions;
+using ECommons.Automation;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -535,6 +539,26 @@ namespace XIVAICompanion
             }
         }
 
+        private bool IsPetRenamerEnabled()
+        {
+            try
+            {
+                var versionIpc = Service.PluginInterface.GetIpcSubscriber<(uint, uint)>("PetRenamer.ApiVersion");
+                var version = versionIpc.InvokeFunc();
+                return true;
+            }
+            catch (Dalamud.Plugin.Ipc.Exceptions.IpcNotReadyError)
+            {
+                Service.Log.Debug("PetRenamer is not enabled");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Service.Log.Error(ex, "Error checking PetRenamer availability");
+                return false;
+            }
+        }
+
         private async Task SummonMinionFromProfile(string profileName)
         {
             LoadAvailablePersonas();
@@ -564,6 +588,7 @@ namespace XIVAICompanion
                     await Service.Framework.RunOnFrameworkThread(() =>
                     {
                         Service.Log.Info($"[Summon Command] Profile '{profileName}' and its minion '{configuredMinion}' are already active. Dismissing minion only.");
+                        if (IsPetRenamerEnabled()) Chat.SendMessage($"/petname clear \"{configuredMinion}\"");
                         Chat.SendMessage($"/minion \"{configuredMinion}\"");
                     });
                     return;
@@ -580,9 +605,27 @@ namespace XIVAICompanion
                 minionIsActive = GetMyMinion() != null;
             });
 
+            
+
             if (minionIsActive)
             {
                 Service.Log.Info($"[Summon Command] Step 1/4: Active minion found. Dismissing it.");
+                if (IsPetRenamerEnabled())
+                {
+                    IGameObject? currentMinion = null;
+                    await Service.Framework.RunOnFrameworkThread(() =>
+                    {
+                        currentMinion = GetMyMinion();
+                    });
+
+                    if (currentMinion != null)
+                    {
+                        string currentMinionName = currentMinion.Name.TextValue;
+                        await Service.Framework.RunOnFrameworkThread(() =>
+                            Chat.SendMessage($"/petname clear \"{currentMinionName}\""));
+                    }
+                }
+                await Task.Delay(500);
                 await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage("/minion"));
                 await Task.Delay(1000);
             }
@@ -594,7 +637,7 @@ namespace XIVAICompanion
             Service.Log.Info($"[Summon Command] Step 2/4: Applying profile '{profileName}'.");
             await Service.Framework.RunOnFrameworkThread(() => SetProfile(profileName));
             await Task.Delay(500);
-
+                     
             var minionToSummon = configuration.MinionToReplace;
             if (string.IsNullOrWhiteSpace(minionToSummon))
             {
@@ -608,6 +651,7 @@ namespace XIVAICompanion
                 minionIsActive = GetMyMinion() != null;
             });
 
+            var minionAiName = configuration.AIName;
             if (minionIsActive)
             {
                 Service.Log.Info($"[Summon Command] Step 3/4: Minion '{minionToSummon}' is active, skip summoning.");
@@ -615,6 +659,7 @@ namespace XIVAICompanion
             else
             {
                 Service.Log.Info($"[Summon Command] Step 3/4: Summoning '{minionToSummon}'.");
+                if (IsPetRenamerEnabled()) await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage($"/petname set \"{minionToSummon}\" \"{minionAiName}\""));
                 await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage($"/minion \"{minionToSummon}\""));
             }
 
