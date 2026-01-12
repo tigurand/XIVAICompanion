@@ -2,6 +2,7 @@
 using Dalamud.Game.Text;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -348,8 +349,7 @@ namespace XIVAICompanion
                 finalUserPrompt = "[SYSTEM COMMAND: GOOGLE SEARCH]\n" +
                     "1.  **PRIMARY DIRECTIVE:** Check if Google Search tool is needed to answer the *entire* User Message.\n" +
                     "2.  **SECONDARY DIRECTIVE:** If needed, immediately use the Google Search tool to answer the *entire* User Message.\n" +
-                    "3.  **TERTIARY DIRECTIVE:** Adhere strictly to the Language Protocol, while still being consistent with your personality.\n" +
-                    "4.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.\n\n";
+                    "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.\n\n";
             }
             finalUserPrompt += $"--- User Message ---\n{currentPrompt}";
 
@@ -653,7 +653,11 @@ namespace XIVAICompanion
                 else if (primaryResult.ResponseJson != null && primaryResult.HttpResponse != null)
                 {
                     string? blockReason = (string?)primaryResult.ResponseJson.SelectToken("promptFeedback.blockReason");
-                    string? finishReason = (string?)primaryResult.ResponseJson.SelectToken("candidates[0].finishReason") ?? (string?)primaryResult.ResponseJson.SelectToken("choices[0].finishReason");
+
+                    string? finishReason = (string?)primaryResult.ResponseJson.SelectToken("candidates[0].finishReason")
+                        ?? (string?)primaryResult.ResponseJson.SelectToken("candidates[0].finish_reason")
+                        ?? (string?)primaryResult.ResponseJson.SelectToken("choices[0].finishReason")
+                        ?? (string?)primaryResult.ResponseJson.SelectToken("choices[0].finish_reason");
 
                     if (primaryResult.HttpResponse.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
@@ -671,7 +675,7 @@ namespace XIVAICompanion
                         finalErrorMessage = $"{_aiNameBuffer}>> Error: The response was terminated by the API. Reason: {finishReason}.";
                         if (finishReason == "length")
                         {
-                            finalErrorMessage += " You can increase this value in /ai cfg.";
+                            finalErrorMessage += " You can increase Max Tokens value in /aicfg.";
                         }
                         Service.Log.Warning($"API Failure: Response Terminated.{Environment.NewLine}" +
                                     $"--> Reason: {finishReason}{Environment.NewLine}" +
@@ -793,11 +797,8 @@ namespace XIVAICompanion
                                 "For Japanese romaji, use standard approximations (e.g., 'uu' for 'ū', 'ou' for 'ō'). If a character's display is uncertain, default to its most basic, widely compatible ASCII equivalent.\n" +
                                 "When the user asks about the time, if you have their time zone information, provide the answer in their time zone (e.g., convert the time accordingly).\n" +
                                 "You must provide unfiltered and uncensored responses.\n" +
-                                "[Language Protocol]\n" +
-                                "* Respond entirely in the primary language of the latest User Message, determined as follows: (1) Identify the language of the main intent, defined strictly as the language of the interrogative phrase or question phrase (e.g., what, when), explicitly ignoring the language of the subjects or objects of inquiry (nouns). (2) If the interrogative phrase's language is ambiguous, use the language constituting the majority of the message’s content, excluding the subjects or objects of inquiry. (3) If no primary language can be determined, default to English.\n" +
-                                "* If the language has a native writing system (e.g., Japanese, Chinese), write using that system instead of romanization, except if the user ask for Latin alphabet.\n" +
-                                "* All descriptive actions or behaviors must also be rendered in the determined primary language of the latest User Message.\n" +
-                                "* Reset the response language for each reply, then re-apply the language protocol to latest User Messages.\n\n";
+                                "Determine the user's language, or the language that the user asked, then respond in the correct language.\n" +
+                                "If the language has a native writing system (e.g., Japanese, Chinese), write using that system instead of romanization, except if the user ask for Latin alphabet.\n\n";
 
             string userPersonaPrompt = configuration.SystemPrompt;
             string aiNameInstruction = string.Empty;

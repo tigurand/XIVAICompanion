@@ -151,13 +151,6 @@ namespace XIVAICompanion.Providers
                         openAiRequest["disable_reasoning"] = "false";
                 }
             }
-            else
-            {
-                if (host.IsCerebras && modelInfo.IsGLM)
-                {
-                    openAiRequest["disable_reasoning"] = "true";
-                }
-            }
 
             if (request.UseWebSearch && !string.IsNullOrEmpty(profile.TavilyApiKey))
             {
