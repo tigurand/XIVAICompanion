@@ -567,10 +567,19 @@ namespace XIVAICompanion
                     PrintSystemMessage(infoBuilder.ToString());
                 }
 
-                string reasoningInfo = providerToUse.Name == "OpenAICompatible" ? (isThink ? $"ReasoningEffort='{ProviderConstants.OpenAIReasoningEffort}'" : "ReasoningEffort='none'") : $"ThinkingBudget={thinkingBudget}";
+                var geminiModelInfo = new GeminiModelInfo(profile.ModelId);
 
-                var modelInfo = new OpenAICompatibleModelInfo(profile.ModelId);
-                var temperature = modelInfo.IsGPT5 ? 1 : configuration.Temperature;
+                string reasoningInfo =
+                    providerToUse.Name == "OpenAICompatible"
+                        ? (isThink
+                            ? $"ReasoningEffort='{ProviderConstants.OpenAIReasoningEffort}'"
+                            : "ReasoningEffort='none'")
+                        : geminiModelInfo.IsGemini3
+                            ? $"ThinkingLevel='{(isThink ? ProviderConstants.GeminiThinkingLevel : "medium")}'"
+                            : $"ThinkingBudget={thinkingBudget}";
+
+                var openAIModelInfo = new OpenAICompatibleModelInfo(profile.ModelId);
+                var temperature = openAIModelInfo.IsGPT5 ? 1 : configuration.Temperature;
 
                 Service.Log.Info(
                     $"API Call Success: ProviderType='{providerToUse.Name}', Model='{profile.ModelId}', HTTP Status={(int?)result.HttpResponse?.StatusCode} - {result.HttpResponse?.StatusCode}, " +
@@ -637,7 +646,7 @@ namespace XIVAICompanion
 
                     logBuilder.AppendLine($"--- Attempt {i + 1} of {failedAttempts.Count} ({attempt.Profile.ProviderType} - {attempt.Profile.ModelId}) ---");
                     logBuilder.AppendLine($"--> Status: {attemptHttpStatus}");
-                    logBuilder.AppendLine($"--> Params: ResponseTokenLimit={attempt.Profile.MaxTokens}, ThinkingBudget={attempt.Profile.MaxTokens}, Temperature={configuration.Temperature}"); // Approximate, since thinkingBudget not stored
+                    logBuilder.AppendLine($"--> Params: ResponseTokenLimit={attempt.Profile.MaxTokens}, Temperature={configuration.Temperature}");
                     logBuilder.AppendLine($"--> Tokens: [P:{attemptResult.PromptTokens}, R:{attemptResult.ResponseTokens}, T:{attemptResult.TotalTokens}]");
                     logBuilder.AppendLine($"--> ResponseTime: {attemptResult.ResponseTimeMs}ms");
                     logBuilder.AppendLine($"--> Prompt: {userPrompt}");

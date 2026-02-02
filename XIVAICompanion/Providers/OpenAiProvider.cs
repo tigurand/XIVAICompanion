@@ -214,7 +214,7 @@ namespace XIVAICompanion.Providers
                 var requestBody = JsonConvert.SerializeObject(openAiRequest);
                 var requestContent = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
-                string endpoint = OpenAICompatibleRouting.BuildCompletionsEndpoint(baseUrl, host);
+                string endpoint = AiRouting.BuildCompletionsEndpoint(baseUrl, host);
 
                 var requestMessage = new HttpRequestMessage(HttpMethod.Post, endpoint)
                 {

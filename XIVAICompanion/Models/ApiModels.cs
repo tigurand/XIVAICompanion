@@ -53,9 +53,14 @@ namespace XIVAICompanion.Models
 
     public class ThinkingConfig
     {
-        [JsonProperty("thinkingBudget")]
-        public int ThinkingBudget { get; set; }
-        [JsonProperty("includeThoughts")] public bool IncludeThoughts { get; set; }
+        [JsonProperty("thinkingBudget", NullValueHandling = NullValueHandling.Ignore)]
+        public int? ThinkingBudget { get; set; }
+
+        [JsonProperty("includeThoughts", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? IncludeThoughts { get; set; }
+
+        [JsonProperty("thinkingLevel", NullValueHandling = NullValueHandling.Ignore)]
+        public string? ThinkingLevel { get; set; }
     }
 
     public class Tool

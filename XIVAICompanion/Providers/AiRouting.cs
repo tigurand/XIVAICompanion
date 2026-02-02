@@ -2,6 +2,17 @@ using System;
 
 namespace XIVAICompanion.Providers
 {
+    internal readonly struct GeminiModelInfo
+    {
+        public readonly bool IsGemini3;
+
+        public GeminiModelInfo(string? modelId)
+        {
+            string modelIdLower = (modelId ?? string.Empty).ToLowerInvariant();
+            IsGemini3 = modelIdLower.Contains("gemini-3");
+        }
+    }
+
     internal readonly struct OpenAICompatibleHostInfo
     {
         public readonly bool IsOpenAi;
@@ -42,7 +53,7 @@ namespace XIVAICompanion.Providers
         }
     }
 
-    internal static class OpenAICompatibleRouting
+    internal static class AiRouting
     {
         public static string BuildCompletionsEndpoint(string baseUrl, OpenAICompatibleHostInfo host)
         {

@@ -54,6 +54,29 @@ namespace XIVAICompanion.Providers
                 requestContents[0] = new Content { Role = "user", Parts = new List<Part> { new Part { Text = request.SystemPrompt } } };
             }
 
+            ThinkingConfig? thinkingConfig = null;
+
+            var modelInfo = new GeminiModelInfo(profile.ModelId);
+
+            if (modelInfo.IsGemini3)
+            {
+                thinkingConfig = new ThinkingConfig
+                {
+                    ThinkingLevel = request.IsThinkingEnabled
+                        ? ProviderConstants.GeminiThinkingLevel
+                        : "medium",
+                    IncludeThoughts = request.ShowThoughts
+                };
+            }
+            else if (request.IsThinkingEnabled && request.ThinkingBudget.HasValue)
+            {
+                thinkingConfig = new ThinkingConfig
+                {
+                    ThinkingBudget = request.ThinkingBudget.Value,
+                    IncludeThoughts = request.ShowThoughts
+                };
+            }
+
             var geminiRequest = new GeminiRequest
             {
                 Contents = requestContents,
@@ -61,9 +84,7 @@ namespace XIVAICompanion.Providers
                 {
                     MaxOutputTokens = request.MaxTokens,
                     Temperature = request.Temperature,
-                    ThinkingConfig = request.IsThinkingEnabled && request.ThinkingBudget.HasValue
-                            ? new ThinkingConfig { ThinkingBudget = request.ThinkingBudget.Value, IncludeThoughts = request.ShowThoughts }
-                            : null
+                    ThinkingConfig = thinkingConfig
                 },
                 SafetySettings = new List<SafetySetting>
                 {
@@ -73,6 +94,7 @@ namespace XIVAICompanion.Providers
                     new SafetySetting { Category = "HARM_CATEGORY_DANGEROUS_CONTENT", Threshold = "BLOCK_NONE" }
                 }
             };
+
 
             if (request.UseWebSearch)
             {
