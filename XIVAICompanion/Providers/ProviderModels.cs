@@ -47,7 +47,7 @@ namespace XIVAICompanion.Providers
     public enum AiProviderType
     {
         Gemini,
-        OpenAiCompatible
+        OpenAICompatible
     }
 
     public static class ProviderConstants

@@ -172,7 +172,7 @@ namespace XIVAICompanion
                     ImGui.SetNextItemWidth(610);
                     ImGui.InputText("##profileApiKey", ref _profileApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
 
-                    if (_profileProviderBuffer == AiProviderType.OpenAiCompatible)
+                    if (_profileProviderBuffer == AiProviderType.OpenAICompatible)
                     {
                         ImGui.Text("Base URL:");
                         ImGui.SetNextItemWidth(610);
@@ -208,7 +208,7 @@ namespace XIVAICompanion
                         ImGui.InputText("##profileTavilyApiKeyGemini", ref _profileTavilyApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
                         ImGui.EndDisabled();
                     }
-                    else if (_profileProviderBuffer == AiProviderType.OpenAiCompatible)
+                    else if (_profileProviderBuffer == AiProviderType.OpenAICompatible)
                     {
                         ImGui.Spacing();
                         ImGui.Text("Tavily API Key (For Web Search):");

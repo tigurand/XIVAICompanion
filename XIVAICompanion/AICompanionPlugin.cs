@@ -691,7 +691,7 @@ namespace XIVAICompanion
                 case AiProviderType.Gemini:
                     _currentProvider = new GeminiProvider(httpClient);
                     break;
-                case AiProviderType.OpenAiCompatible:
+                case AiProviderType.OpenAICompatible:
                     _currentProvider = new OpenAiProvider(httpClient);
                     break;
                 default:

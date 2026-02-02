@@ -355,7 +355,7 @@ namespace XIVAICompanion
 
             bool shouldPreSearchWithTavily = useWebSearch
                 && !string.IsNullOrEmpty(profile.TavilyApiKey)
-                && (profile.ProviderType == AiProviderType.OpenAiCompatible
+                && (profile.ProviderType == AiProviderType.OpenAICompatible
                     || (profile.ProviderType == AiProviderType.Gemini && profile.UseTavilyInstead));
 
             bool didPreSearchWithTavily = false;
@@ -508,7 +508,7 @@ namespace XIVAICompanion
                         Service.Log.Info($">> Web search: '{searchQuery}' => '{searchQueryToUse}'");
                         string searchResults = await TavilySearchHelper.SearchAsync(searchQueryToUse, profile.TavilyApiKey);
                         var followUpHistory = new List<Content>(request.ConversationHistory);
-                        followUpHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = (profile.ProviderType == AiProviderType.OpenAiCompatible ? "TOOL_RESPONSE: " : "SEARCH_RESULTS: ") + searchResults } } });
+                        followUpHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = (profile.ProviderType == AiProviderType.OpenAICompatible ? "TOOL_RESPONSE: " : "SEARCH_RESULTS: ") + searchResults } } });
                         request.ConversationHistory = followUpHistory;
                         result = await providerToUse.SendPromptAsync(request, profile, true);
                     }
@@ -560,18 +560,21 @@ namespace XIVAICompanion
                 {
                     var infoBuilder = new StringBuilder();
                     infoBuilder.AppendLine($"{_aiNameBuffer}>> --- Technical Info ---");
-                    infoBuilder.AppendLine($"Provider: {providerToUse.Name}");
+                    infoBuilder.AppendLine($"Provider Type: {providerToUse.Name}");
                     infoBuilder.AppendLine($"Model: {profile.ModelId}");
                     infoBuilder.AppendLine($"Tokens=[P:{result.PromptTokens}, R:{result.ResponseTokens}, T:{result.TotalTokens}]");
                     infoBuilder.AppendLine($"Response Time: {result.ResponseTimeMs}ms");
                     PrintSystemMessage(infoBuilder.ToString());
                 }
 
-                string reasoningInfo = providerToUse.Name == "OpenAI" ? (isThink ? $"ReasoningEffort='{ProviderConstants.OpenAIReasoningEffort}'" : "ReasoningEffort='none'") : $"ThinkingBudget={thinkingBudget}";
+                string reasoningInfo = providerToUse.Name == "OpenAICompatible" ? (isThink ? $"ReasoningEffort='{ProviderConstants.OpenAIReasoningEffort}'" : "ReasoningEffort='none'") : $"ThinkingBudget={thinkingBudget}";
+
+                var modelInfo = new OpenAICompatibleModelInfo(profile.ModelId);
+                var temperature = modelInfo.IsGPT5 ? 1 : configuration.Temperature;
 
                 Service.Log.Info(
-                    $"API Call Success: Provider='{providerToUse.Name}', Model='{profile.ModelId}', HTTP Status={(int?)result.HttpResponse?.StatusCode} - {result.HttpResponse?.StatusCode}, " +
-                    $"ResponseTokenLimit={responseTokensToUse}, {reasoningInfo}, Temperature={configuration.Temperature}, " +
+                    $"API Call Success: ProviderType='{providerToUse.Name}', Model='{profile.ModelId}', HTTP Status={(int?)result.HttpResponse?.StatusCode} - {result.HttpResponse?.StatusCode}, " +
+                    $"ResponseTokenLimit={responseTokensToUse}, {reasoningInfo}, Temperature={temperature}, " +
                     $"Tokens=[P:{result.PromptTokens}, R:{result.ResponseTokens}, T:{result.TotalTokens}], ResponseTime={result.ResponseTimeMs}ms"
                 );
 

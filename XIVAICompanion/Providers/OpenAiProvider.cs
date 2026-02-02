@@ -15,7 +15,7 @@ namespace XIVAICompanion.Providers
     {
         private readonly HttpClient _httpClient;
 
-        public string Name => "OpenAI";
+        public string Name => "OpenAICompatible";
 
         public OpenAiProvider(HttpClient httpClient)
         {
@@ -52,11 +52,13 @@ namespace XIVAICompanion.Providers
                 baseUrl = "https://api.openai.com/v1";
             }
 
-            var host = new OpenAiCompatibleHostInfo(baseUrl);
+            var host = new OpenAICompatibleHostInfo(baseUrl);
 
-            var modelInfo = new OpenAiCompatibleModelInfo(profile.ModelId);
+            var modelInfo = new OpenAICompatibleModelInfo(profile.ModelId);
 
             var messages = new List<object>();
+
+            var temperature = modelInfo.IsGPT5 ? 1 : request.Temperature;
 
             messages.Add(new { role = "system", content = request.SystemPrompt });
 
@@ -101,7 +103,7 @@ namespace XIVAICompanion.Providers
                     ["instructions"] = request.SystemPrompt,
                     ["input"] = JArray.FromObject(inputMessages),
                     ["max_output_tokens"] = request.MaxTokens,
-                    ["temperature"] = request.Temperature
+                    ["temperature"] = temperature
                 };
             }
             else
@@ -111,7 +113,7 @@ namespace XIVAICompanion.Providers
                     ["model"] = profile.ModelId,
                     ["messages"] = JArray.FromObject(messages),
                     ["max_tokens"] = request.MaxTokens,
-                    ["temperature"] = request.Temperature
+                    ["temperature"] = temperature
                 };
             }
 
@@ -212,7 +214,7 @@ namespace XIVAICompanion.Providers
                 var requestBody = JsonConvert.SerializeObject(openAiRequest);
                 var requestContent = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
-                string endpoint = OpenAiCompatibleRouting.BuildCompletionsEndpoint(baseUrl, host);
+                string endpoint = OpenAICompatibleRouting.BuildCompletionsEndpoint(baseUrl, host);
 
                 var requestMessage = new HttpRequestMessage(HttpMethod.Post, endpoint)
                 {
@@ -244,20 +246,20 @@ namespace XIVAICompanion.Providers
                 {
                     result.ResponseText = (string?)result.ResponseJson?.SelectToken("output_text");
 
-                    if (string.IsNullOrEmpty(result.ResponseText))
+                    var messageTexts = new List<string>();
+                    var reasoningTexts = new List<string>();
+                    var summaryTexts = new List<string>();
+
+                    var output = result.ResponseJson?["output"] as JArray;
+                    if (output != null)
                     {
-                        var output = result.ResponseJson?["output"] as JArray;
-                        if (output != null)
+                        foreach (var item in output)
                         {
-                            var messageTexts = new List<string>();
-                            var reasoningTexts = new List<string>();
-                            foreach (var item in output)
+                            string? itemType = (string?)item?["type"];
+
+                            var content = item?["content"] as JArray;
+                            if (content != null)
                             {
-                                string? itemType = (string?)item?["type"];
-
-                                var content = item?["content"] as JArray;
-                                if (content == null) continue;
-
                                 foreach (var part in content)
                                 {
                                     string? text = (string?)part?["text"];
@@ -270,14 +272,46 @@ namespace XIVAICompanion.Providers
                                 }
                             }
 
-                            if (messageTexts.Count > 0)
+                            if (host.IsOpenAi)
                             {
-                                result.ResponseText = string.Join("\n", messageTexts);
+                                var summary = item?["summary"] as JArray;
+                                if (summary != null)
+                                {
+                                    foreach (var part in summary)
+                                    {
+                                        string? text = (string?)part?["text"];
+                                        if (!string.IsNullOrEmpty(text)) summaryTexts.Add(text);
+                                    }
+                                }
                             }
+                        }
+
+                        if (string.IsNullOrEmpty(result.ResponseText) && messageTexts.Count > 0)
+                        {
+                            result.ResponseText = string.Join("\n", messageTexts);
+                        }
+                        else if (string.IsNullOrEmpty(result.ResponseText) && reasoningTexts.Count > 0)
+                        {
+                            result.ResponseText = string.Join("\n", reasoningTexts);
+                        }
+
+                        if (host.IsOpenAi && request.IsThinkingEnabled && request.ShowThoughts)
+                        {
+                            var thoughtBlocks = new List<string>();
+                            if (summaryTexts.Count > 0)
+                                thoughtBlocks.Add(string.Join("\n\n", summaryTexts));
                             else if (reasoningTexts.Count > 0)
-                            {
-                                result.ResponseText = string.Join("\n", reasoningTexts);
-                            }
+                                thoughtBlocks.Add(string.Join("\n", reasoningTexts));
+
+                            if (!string.IsNullOrEmpty(result.ResponseText))
+                                thoughtBlocks.Add(result.ResponseText);
+
+                            if (thoughtBlocks.Count > 0)
+                                result.ResponseText = string.Join("\n\n", thoughtBlocks);
+                        }
+                        else if (host.IsOpenAi && string.IsNullOrEmpty(result.ResponseText) && summaryTexts.Count > 0)
+                        {
+                            result.ResponseText = string.Join("\n\n", summaryTexts);
                         }
                     }
 

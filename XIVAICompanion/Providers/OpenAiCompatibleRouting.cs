@@ -2,7 +2,7 @@ using System;
 
 namespace XIVAICompanion.Providers
 {
-    internal readonly struct OpenAiCompatibleHostInfo
+    internal readonly struct OpenAICompatibleHostInfo
     {
         public readonly bool IsOpenAi;
         public readonly bool IsOpenRouter;
@@ -10,7 +10,7 @@ namespace XIVAICompanion.Providers
         public readonly bool IsHuggingFace;
         public readonly bool IsCerebras;
 
-        public OpenAiCompatibleHostInfo(string? baseUrl)
+        public OpenAICompatibleHostInfo(string? baseUrl)
         {
             string baseUrlLower = (baseUrl ?? string.Empty).ToLowerInvariant();
             IsOpenAi = baseUrlLower.Contains("openai.com");
@@ -23,16 +23,18 @@ namespace XIVAICompanion.Providers
         public bool UsesResponsesApi => IsOpenAi || IsHuggingFace;
     }
 
-    internal readonly struct OpenAiCompatibleModelInfo
+    internal readonly struct OpenAICompatibleModelInfo
     {
+        public readonly bool IsGPT5;
         public readonly bool IsGPTOSS;
         public readonly bool IsGLM;
         public readonly bool IsQwen;
         public readonly bool IsQwen235;
 
-        public OpenAiCompatibleModelInfo(string? modelId)
+        public OpenAICompatibleModelInfo(string? modelId)
         {
             string modelIdLower = (modelId ?? string.Empty).ToLowerInvariant();
+            IsGPT5 = modelIdLower.Contains("gpt-5");
             IsGPTOSS = modelIdLower.Contains("gpt-oss");
             IsGLM = modelIdLower.Contains("glm");
             IsQwen = modelIdLower.Contains("qwen") && !modelIdLower.Contains("qwen-3-235b");
@@ -40,9 +42,9 @@ namespace XIVAICompanion.Providers
         }
     }
 
-    internal static class OpenAiCompatibleRouting
+    internal static class OpenAICompatibleRouting
     {
-        public static string BuildCompletionsEndpoint(string baseUrl, OpenAiCompatibleHostInfo host)
+        public static string BuildCompletionsEndpoint(string baseUrl, OpenAICompatibleHostInfo host)
         {
             return host.UsesResponsesApi
                 ? $"{baseUrl}/responses"
