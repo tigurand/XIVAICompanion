@@ -1,9 +1,16 @@
-﻿using Dalamud.Game.ClientState.Objects.Types;
+﻿using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin;
+using Dalamud.Plugin.Ipc;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
+using Glamourer.Api.Enums;
 using Glamourer.Api.IpcSubscribers;
+using Newtonsoft.Json.Linq;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace XIVAICompanion.Managers
 {
@@ -11,8 +18,11 @@ namespace XIVAICompanion.Managers
     {
         private readonly ApiVersion _apiVersion;
         private readonly GetDesignList _getDesignList;
+        private readonly GetDesignJObject _getDesignJObject;
+        private readonly GetDesignBase64 _getDesignBase64;
         private readonly ApplyDesign _applyByGuid;
         private readonly RevertState _revertState;
+        private readonly ApplyState _applyState;
 
         public bool IsApiAvailable { get; private set; }
 
@@ -29,8 +39,11 @@ namespace XIVAICompanion.Managers
             }
 
             _getDesignList = new GetDesignList(pluginInterface);
+            _getDesignJObject = new GetDesignJObject(pluginInterface);
+            _getDesignBase64 = new GetDesignBase64(pluginInterface);
             _applyByGuid = new ApplyDesign(pluginInterface);
             _revertState = new RevertState(pluginInterface);
+            _applyState = new ApplyState(pluginInterface);
         }
 
         public void RecheckApiAvailability()
@@ -80,9 +93,56 @@ namespace XIVAICompanion.Managers
         {
             if (!IsApiAvailable || character == null || designGuid == Guid.Empty) return;
 
+            var base64 = _getDesignBase64.Invoke(designGuid);
+            if (string.IsNullOrEmpty(base64))
+            {
+                Log.Warning($"Could not retrieve base64 for design {designGuid}");
+                return;
+            }
+
+            if (character.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Companion)
+            {
+                unsafe
+                {
+                    var chara = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)character.Address;
+                    if (chara == null) return;
+
+                    var originalModelCharaId = chara->ModelContainer.ModelCharaId;
+
+                    byte[] originalCustomize = new byte[26];
+                    var customizePtr = (byte*)&chara->DrawData.CustomizeData;
+                    for (int i = 0; i < 26; i++)
+                        originalCustomize[i] = customizePtr[i];
+
+                    try
+                    {
+                        chara->ModelContainer.ModelCharaId = 0;
+
+                        for (int i = 0; i < 26; i++)
+                            customizePtr[i] = 1;
+
+                        const ApplyFlag flags = ApplyFlag.Once | ApplyFlag.Customization | ApplyFlag.Equipment;
+                        _applyState.Invoke(base64, character.ObjectIndex, 0, flags);
+                    }
+                    finally
+                    {
+                        chara->ModelContainer.ModelCharaId = originalModelCharaId;
+
+                        for (int i = 0; i < 26; i++)
+                            customizePtr[i] = originalCustomize[i];
+                    }
+                }
+                return;
+            }
+
             try
             {
-                _applyByGuid.Invoke(designGuid, character.ObjectIndex);
+                Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    const ApplyFlag flags = ApplyFlag.Once | ApplyFlag.Customization | ApplyFlag.Equipment;
+                    _applyByGuid.Invoke(designGuid, character.ObjectIndex, 0, flags);
+                });
             }
             catch (Exception ex)
             {

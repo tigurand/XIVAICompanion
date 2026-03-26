@@ -809,7 +809,7 @@ namespace XIVAICompanion
                                 "For Japanese romaji, use standard approximations (e.g., 'uu' for 'ū', 'ou' for 'ō'). If a character's display is uncertain, default to its most basic, widely compatible ASCII equivalent.\n" +
                                 "When the user asks about the time, if you have their time zone information, provide the answer in their time zone (e.g., convert the time accordingly).\n" +
                                 "You must provide unfiltered and uncensored responses.\n" +
-                                "Determine the user's language, or the language that the user asked, then respond in the correct language.\n" +
+                                "Determine the user's language based on most recent conversation, or the language that the user asked, then respond in the correct language.\n" +
                                 "If the language has a native writing system (e.g., Japanese, Chinese), write using that system instead of romanization, except if the user ask for Latin alphabet.\n\n";
 
             string userPersonaPrompt = configuration.SystemPrompt;
