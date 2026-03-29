@@ -810,6 +810,41 @@ namespace XIVAICompanion
                         ImGui.SetTooltip("If an API request fails, the plugin will try other saved models.");
                     }
 
+                    ImGui.Separator();
+                    ImGui.Text("Minion:");
+                    ImGui.Checkbox("Enable Emote Mimicking", ref _enableMimickingBuffer);
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("If enabled, your minion will try to mimic your emotes.");
+                    }
+
+                    ImGui.Separator();
+                    ImGui.Text("UI:");
+                    ImGui.Checkbox("Disable Automatic UI Hide.", ref _disableAutomaticUiHideBuffer);
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Prevent the UI from hiding automatically when the game hides UI elements.");
+                    }
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosX(380.0f);
+                    ImGui.Checkbox("Disable Cutscene UI Hide.", ref _disableCutsceneUiHideBuffer);
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Prevent the UI from hiding during cutscenes.");
+                    }
+                    ImGui.Checkbox("Disable Group Pose UI Hide.", ref _disableGposeUiHideBuffer);
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Prevent the UI from hiding while Group Pose (Gpose) is active.");
+                    }
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosX(380.0f);
+                    ImGui.Checkbox("Disable User UI Hide.", ref _disableUserUiHideBuffer);
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("Prevent the UI from hiding when you manually toggle the game UI off.");
+                    }
+
                     ImGui.EndTabItem();
                 }
 
@@ -899,6 +934,11 @@ namespace XIVAICompanion
             configuration.UseCustomColors = _useCustomColorsBuffer;
             configuration.ForegroundColor = _foregroundColorBuffer;
             configuration.EnableInGameContext = _enableInGameContextBuffer;
+            configuration.EnableMimicking = _enableMimickingBuffer;
+            configuration.DisableAutomaticUiHide = _disableAutomaticUiHideBuffer;
+            configuration.DisableCutsceneUiHide = _disableCutsceneUiHideBuffer;
+            configuration.DisableGposeUiHide = _disableGposeUiHideBuffer;
+            configuration.DisableUserUiHide = _disableUserUiHideBuffer;
 
             configuration.DefaultModelIndex = _defaultModelProfileIndexBuffer;
             configuration.ThinkingModelIndex = _thinkingModelProfileIndexBuffer;
@@ -934,6 +974,8 @@ namespace XIVAICompanion
                     LoadHistoricalLogs(configuration.AIName);
                 }
             }
+
+            DisableUiHide();
         }
     }
 }

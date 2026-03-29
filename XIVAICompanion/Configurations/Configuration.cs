@@ -49,6 +49,11 @@ namespace XIVAICompanion.Configurations
         public bool FreshLogin { get; set; } = true;
         public bool EnableAutoFallback { get; set; } = true;
         public bool EnableInGameContext { get; set; } = true;
+        public bool EnableMimicking { get; set; } = true;
+        public bool DisableAutomaticUiHide { get; set; } = false;
+        public bool DisableCutsceneUiHide { get; set; } = false;
+        public bool DisableGposeUiHide { get; set; } = false;
+        public bool DisableUserUiHide { get; set; } = false;
 
         // Chat Log Display Settings
         public bool ShowPrompt { get; set; } = true;

@@ -23,6 +23,7 @@ namespace XIVAICompanion.Managers
         private readonly ApplyDesign _applyByGuid;
         private readonly RevertState _revertState;
         private readonly ApplyState _applyState;
+        private bool _skipRestoreOnce = true;
 
         public bool IsApiAvailable { get; private set; }
 
@@ -106,7 +107,6 @@ namespace XIVAICompanion.Managers
                 {
                     var chara = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)character.Address;
                     if (chara == null) return;
-
                     var originalModelCharaId = chara->ModelContainer.ModelCharaId;
 
                     byte[] originalCustomize = new byte[26];
@@ -117,7 +117,6 @@ namespace XIVAICompanion.Managers
                     try
                     {
                         chara->ModelContainer.ModelCharaId = 0;
-
                         for (int i = 0; i < 26; i++)
                             customizePtr[i] = 1;
 
@@ -126,10 +125,22 @@ namespace XIVAICompanion.Managers
                     }
                     finally
                     {
-                        chara->ModelContainer.ModelCharaId = originalModelCharaId;
+                        Action restore = () =>
+                        {
+                            chara->ModelContainer.ModelCharaId = originalModelCharaId;
+                            for (int i = 0; i < 26; i++)
+                                customizePtr[i] = originalCustomize[i];
+                        };
 
-                        for (int i = 0; i < 26; i++)
-                            customizePtr[i] = originalCustomize[i];
+                        if (_skipRestoreOnce)
+                        {
+                            _skipRestoreOnce = false;
+                            Task.Delay(2000).ContinueWith(_ => restore());
+                        }
+                        else
+                        {
+                            restore();
+                        }
                     }
                 }
                 return;
@@ -139,7 +150,6 @@ namespace XIVAICompanion.Managers
             {
                 Task.Run(async () =>
                 {
-                    await Task.Delay(1000);
                     const ApplyFlag flags = ApplyFlag.Once | ApplyFlag.Customization | ApplyFlag.Equipment;
                     _applyByGuid.Invoke(designGuid, character.ObjectIndex, 0, flags);
                 });

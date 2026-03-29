@@ -58,6 +58,8 @@ namespace XIVAICompanion.Emoting
 
         private async void OnPlayerEmote(IGameObject instigator, ushort emoteId)
         {
+            if (!_plugin._enableMimickingBuffer) return;
+
             try
             {
                 var player = Service.ObjectTable.LocalPlayer;

@@ -143,6 +143,12 @@ namespace XIVAICompanion
         private Vector4 _foregroundColorBuffer;
         private bool _enableInGameContextBuffer;
 
+        public bool _enableMimickingBuffer;
+        private bool _disableAutomaticUiHideBuffer;
+        private bool _disableCutsceneUiHideBuffer;
+        private bool _disableGposeUiHideBuffer;
+        private bool _disableUserUiHideBuffer;
+
         // Chat Window Stuff
         private bool _drawChatWindow;
         private string _chatInputBuffer = string.Empty;
@@ -383,10 +389,7 @@ namespace XIVAICompanion
 
             Service.Framework.Update += OnFrameworkUpdate;
 
-            Service.PluginInterface.UiBuilder.DisableAutomaticUiHide = _isDevModeEnabled;
-            Service.PluginInterface.UiBuilder.DisableCutsceneUiHide = _isDevModeEnabled;
-            Service.PluginInterface.UiBuilder.DisableGposeUiHide = _isDevModeEnabled;
-            Service.PluginInterface.UiBuilder.DisableUserUiHide = _isDevModeEnabled;
+            DisableUiHide();
         }
 
         private string GetSanitizedAiName(string aiName)
@@ -669,6 +672,11 @@ namespace XIVAICompanion
             _useCustomColorsBuffer = configuration.UseCustomColors;
             _foregroundColorBuffer = configuration.ForegroundColor;
             _enableInGameContextBuffer = configuration.EnableInGameContext;
+            _enableMimickingBuffer = configuration.EnableMimicking;
+            _disableAutomaticUiHideBuffer = configuration.DisableAutomaticUiHide;
+            _disableCutsceneUiHideBuffer = configuration.DisableCutsceneUiHide;
+            _disableGposeUiHideBuffer = configuration.DisableGposeUiHide;
+            _disableUserUiHideBuffer = configuration.DisableUserUiHide;
 
             _saveChatToFileBuffer = configuration.SaveChatHistoryToFile;
             _sessionsToLoadBuffer = configuration.SessionsToLoad;
@@ -957,6 +965,14 @@ namespace XIVAICompanion
             }
         }
 
+        public void DisableUiHide()
+        {
+            Service.PluginInterface.UiBuilder.DisableAutomaticUiHide = _disableAutomaticUiHideBuffer;
+            Service.PluginInterface.UiBuilder.DisableCutsceneUiHide = _disableCutsceneUiHideBuffer;
+            Service.PluginInterface.UiBuilder.DisableGposeUiHide = _disableGposeUiHideBuffer;
+            Service.PluginInterface.UiBuilder.DisableUserUiHide = _disableUserUiHideBuffer;
+        }
+
         public void Dispose()
         {
             RevertTrackedMinion();
@@ -999,11 +1015,6 @@ namespace XIVAICompanion
             _drawConfigWindow = false;
             _drawChatWindow = false;
             _drawAutoRpWindow = false;
-
-            Service.PluginInterface.UiBuilder.DisableAutomaticUiHide = false;
-            Service.PluginInterface.UiBuilder.DisableCutsceneUiHide = false;
-            Service.PluginInterface.UiBuilder.DisableGposeUiHide = false;
-            Service.PluginInterface.UiBuilder.DisableUserUiHide = false;
         }
     }
 }
