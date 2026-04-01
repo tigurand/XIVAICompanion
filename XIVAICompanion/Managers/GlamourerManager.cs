@@ -1,21 +1,17 @@
-﻿using Dalamud.Game.ClientState.Objects.Enums;
-using Dalamud.Game.ClientState.Objects.Types;
+﻿using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin;
-using Dalamud.Plugin.Ipc;
-using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using Glamourer.Api.Enums;
+using Glamourer.Api.Helpers;
 using Glamourer.Api.IpcSubscribers;
-using Newtonsoft.Json.Linq;
 using Serilog;
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 
 namespace XIVAICompanion.Managers
 {
     public class GlamourerManager
     {
+        private readonly IDalamudPluginInterface _pluginInterface;
         private readonly ApiVersion _apiVersion;
         private readonly GetDesignList _getDesignList;
         private readonly GetDesignJObject _getDesignJObject;
@@ -23,12 +19,12 @@ namespace XIVAICompanion.Managers
         private readonly ApplyDesign _applyByGuid;
         private readonly RevertState _revertState;
         private readonly ApplyState _applyState;
-        private bool _skipRestoreOnce = true;
 
         public bool IsApiAvailable { get; private set; }
 
         public GlamourerManager(IDalamudPluginInterface pluginInterface)
         {
+            _pluginInterface = pluginInterface;
             _apiVersion = new ApiVersion(pluginInterface);
             try
             {
@@ -90,23 +86,24 @@ namespace XIVAICompanion.Managers
             }
         }
 
-        public void ApplyDesign(Guid designGuid, IGameObject character)
+        public void ApplyDesign(Guid designGuid, IGameObject minion)
         {
-            if (!IsApiAvailable || character == null || designGuid == Guid.Empty) return;
+            if (!IsApiAvailable || minion == null || designGuid == Guid.Empty) return;
 
             var base64 = _getDesignBase64.Invoke(designGuid);
             if (string.IsNullOrEmpty(base64))
             {
-                Log.Warning($"Could not retrieve base64 for design {designGuid}");
+                Service.Log.Warning($"Could not retrieve base64 for design {designGuid}");
                 return;
             }
 
-            if (character.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Companion)
+            if (minion.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Companion)
             {
                 unsafe
                 {
-                    var chara = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)character.Address;
+                    var chara = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)minion.Address;
                     if (chara == null) return;
+
                     var originalModelCharaId = chara->ModelContainer.ModelCharaId;
 
                     byte[] originalCustomize = new byte[26];
@@ -114,49 +111,27 @@ namespace XIVAICompanion.Managers
                     for (int i = 0; i < 26; i++)
                         originalCustomize[i] = customizePtr[i];
 
-                    try
+                    chara->ModelContainer.ModelCharaId = 0;
+                    for (int i = 0; i < 26; i++)
+                        customizePtr[i] = 1;
+
+                    var minionAddress = minion.Address;
+                    EventSubscriber<nint, StateChangeType>? subscriber = null;
+                    subscriber = StateChangedWithType.Subscriber(_pluginInterface, (address, changeType) =>
                     {
-                        chara->ModelContainer.ModelCharaId = 0;
+                        if (address != minionAddress || changeType != StateChangeType.Design) return;
+
+                        chara->ModelContainer.ModelCharaId = originalModelCharaId;
                         for (int i = 0; i < 26; i++)
-                            customizePtr[i] = 1;
+                            customizePtr[i] = originalCustomize[i];
 
-                        const ApplyFlag flags = ApplyFlag.Once | ApplyFlag.Customization | ApplyFlag.Equipment;
-                        _applyState.Invoke(base64, character.ObjectIndex, 0, flags);
-                    }
-                    finally
-                    {
-                        Action restore = () =>
-                        {
-                            chara->ModelContainer.ModelCharaId = originalModelCharaId;
-                            for (int i = 0; i < 26; i++)
-                                customizePtr[i] = originalCustomize[i];
-                        };
+                        subscriber?.Dispose();
+                        subscriber = null;
+                    });
 
-                        if (_skipRestoreOnce)
-                        {
-                            _skipRestoreOnce = false;
-                            Task.Delay(2000).ContinueWith(_ => restore());
-                        }
-                        else
-                        {
-                            restore();
-                        }
-                    }
-                }
-                return;
-            }
-
-            try
-            {
-                Task.Run(async () =>
-                {
                     const ApplyFlag flags = ApplyFlag.Once | ApplyFlag.Customization | ApplyFlag.Equipment;
-                    _applyByGuid.Invoke(designGuid, character.ObjectIndex, 0, flags);
-                });
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Could not apply Glamourer design via IPC.");
+                    _applyState.Invoke(base64, minion.ObjectIndex, 0, flags);
+                }
             }
         }
     }

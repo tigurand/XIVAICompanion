@@ -975,7 +975,9 @@ namespace XIVAICompanion
 
         public void Dispose()
         {
-            RevertTrackedMinion();
+            _glamouredMinionObjectId = 0;
+            _lastAppliedDesignGuid = Guid.Empty;
+            _minionNamingManager.ClearNaming();
             SaveCurrentSessionLog();
 
             _emoteMimickingManager?.Dispose();
