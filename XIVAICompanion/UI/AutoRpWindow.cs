@@ -34,10 +34,22 @@ namespace XIVAICompanion
                     ImGui.SameLine();
                     ImGui.TextColored(new Vector4(0, 1, 0, 1), "Running");
                     ImGui.SameLine();
-                    bool isManualMode = string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName;
-                    ImGui.TextWrapped(isManualMode
-                        ? "- In Manual Input Mode"
-                        : $"- Listening for '{_autoRpTargetNameBuffer}'");
+                    string statusText;
+
+                    if (_openListenerModeBuffer)
+                    {
+                        statusText = "- In Open Listener Mode";
+                    }
+                    else if (string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName)
+                    {
+                        statusText = "- In Manual Input Mode";
+                    }
+                    else
+                    {
+                        statusText = $"- Listening for '{_autoRpTargetNameBuffer}'";
+                    }
+
+                    ImGui.TextWrapped(statusText);
                 }
                 else
                 {
@@ -88,7 +100,7 @@ namespace XIVAICompanion
                 {
                     var target = Service.TargetManager.Target;
 
-                    if (target == null || target.ObjectKind != ObjectKind.Player)
+                    if (target == null || target.ObjectKind != ObjectKind.Pc)
                     {
                         _autoRpTargetNameBuffer = string.Empty;
                     }

@@ -62,7 +62,7 @@ namespace XIVAICompanion.Utils
                 context.Homeworld = player.HomeWorld.Value.Name.ToString() ?? "Unknown";
 
                 var customize = player.Customize;
-                if (customize != null && customize.Length > 0)
+                if (!customize.IsEmpty)
                 {
                     context.Gender = customize[1] == 1 ? "Female" : "Male";
                     context.Race = GetRaceName(customize[0]);
@@ -95,7 +95,7 @@ namespace XIVAICompanion.Utils
                     context.Location = $"{Service.DataManager.GetExcelSheet<TerritoryType>()?.GetRow(Service.ClientState.TerritoryType).PlaceName.Value.Name.ToString() ?? "Unknown"}";
 
                     var weatherProvider = new WeatherForecastProvider(dataManager);
-                    context.WeatherForecast = weatherProvider.GetWeatherForecast(clientState.TerritoryType);
+                    context.WeatherForecast = weatherProvider.GetWeatherForecast((ushort)clientState.TerritoryType);
 
                     if (context.WeatherForecast.Count > 0)
                     {

@@ -1,4 +1,5 @@
-﻿using Dalamud.Game.Text;
+﻿using Dalamud.Game.Chat;
+using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using System;
 using System.Collections.Generic;
@@ -71,44 +72,44 @@ namespace XIVAICompanion
             return cleanedName;
         }
 
-        private void OnChatMessage(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
+        private void OnChatMessage(IHandleableChatMessage message)
         {
-            if (!AllowedRpAndListenerChatTypes.Contains(type)) return;
+            if (!AllowedRpAndListenerChatTypes.Contains(message.LogKind)) return;
 
-            bool isTellReply = _autoReplyToAllTellsBuffer && type == XivChatType.TellIncoming;
-            bool isOpenListenerReply = _openListenerModeBuffer && IsOpenListenerChannelEnabled(type);
+            bool isTellReply = _autoReplyToAllTellsBuffer && message.LogKind == XivChatType.TellIncoming;
+            bool isOpenListenerReply = _openListenerModeBuffer && IsOpenListenerChannelEnabled(message.LogKind);
 
             if (_isAutoRpRunning && (isOpenListenerReply || (isTellReply && _isDevModeEnabled)))
             {
-                if (sender.TextValue.StartsWith("[CT]")) return;
+                if (message.Sender.TextValue.StartsWith("[CT]")) return;
                 if (IsAutoRpProcessing()) return;
                 if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
 
-                string cleanPlayerName = ParsePlayerNameFromRaw(sender.TextValue);
+                string cleanPlayerName = ParsePlayerNameFromRaw(message.Sender.TextValue);
                 if (cleanPlayerName == _localPlayerName) return;
 
                 _currentRpPartnerName = cleanPlayerName;
 
                 string logPrefix = isTellReply ? "[Auto-Tell Reply]" : "[Open Listener]";
-                Service.Log.Info($"{logPrefix} Captured message from '{cleanPlayerName}' in '{type}': {message.TextValue}");
+                Service.Log.Info($"{logPrefix} Captured message from '{cleanPlayerName}' in '{message.LogKind}': {message.Message.TextValue}");
 
-                string replyMessageText = message.TextValue;
+                string replyMessageText = message.Message.TextValue;
 
                 _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = cleanPlayerName, Message = replyMessageText });
                 _shouldScrollToBottom = true;
 
-                Task.Run(() => SendAutoReplyPrompt(replyMessageText, cleanPlayerName, type));
+                Task.Run(() => SendAutoReplyPrompt(replyMessageText, cleanPlayerName, message.LogKind));
 
                 return;
             }
 
-            if (_isAutoRpRunning && IsRpChannelEnabled(type))
+            if (_isAutoRpRunning && IsRpChannelEnabled(message.LogKind))
             {
                 if (string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName) return;
                 if (IsAutoRpProcessing()) return;
                 if ((DateTime.Now - _lastRpResponseTimestamp).TotalSeconds < _autoRpDelayBuffer) return;
 
-                var senderName = sender.TextValue;
+                var senderName = message.Sender.TextValue;
                 if (!string.IsNullOrEmpty(senderName) && !char.IsLetter(senderName[0]))
                 {
                     senderName = senderName.Substring(1);
@@ -117,13 +118,13 @@ namespace XIVAICompanion
 
                 _currentRpPartnerName = _autoRpTargetNameBuffer;
 
-                Service.Log.Info($"[Auto RP] Captured message from '{_autoRpTargetNameBuffer}' in channel '{type}': {message.TextValue}");
-                string messageText = message.TextValue;
+                Service.Log.Info($"[Auto RP] Captured message from '{_autoRpTargetNameBuffer}' in channel '{message.LogKind}': {message.Message.TextValue}");
+                string messageText = message.Message.TextValue;
 
                 _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = _autoRpTargetNameBuffer, Message = messageText });
                 _shouldScrollToBottom = true;
 
-                Task.Run(() => SendAutoRpPrompt(messageText, type));
+                Task.Run(() => SendAutoRpPrompt(messageText, message.LogKind));
             }
         }
 
