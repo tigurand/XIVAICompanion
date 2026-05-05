@@ -16,15 +16,15 @@
       },
       "ECommons": {
         "type": "Direct",
-        "requested": "[3.2.0.11, )",
-        "resolved": "3.2.0.11",
-        "contentHash": "6W3Slgp4A+H0OtLcW7tlmtDG7dhJIZw7LzPKvskWa+6K1RPXDa9GsuPkNgDj6ww8Y3OrMbebebfuU9vnglnm+A=="
+        "requested": "[3.2.0.16, )",
+        "resolved": "3.2.0.16",
+        "contentHash": "nbWQqETgnryEWedkZSxNValCgTdylNOibwkaYNYvGoY7XBXWK1KzKVgAroPQpGGrF2Q3NX1mbhoDczAaePYc8w=="
       },
       "Glamourer.Api": {
         "type": "Direct",
-        "requested": "[2.8.0, )",
-        "resolved": "2.8.0",
-        "contentHash": "dCxycU+lA0qraE70ZoRvM4GQAPq/K+qL/bg6t/kxKPox5GWaiunKOTXNOG2hOvgEda5WtFy6e3c9OuIM6L3faQ=="
+        "requested": "[2.8.1, )",
+        "resolved": "2.8.1",
+        "contentHash": "RCaAAd1hmRLiLAeAVFPi8GZKRIVYrh2m0vmGA+3yKZj3xemWr8/KU2vHlt1mUdMnyPlCX2zPK6zM4nFsMB+GYg=="
       }
     }
   }
