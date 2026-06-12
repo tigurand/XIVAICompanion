@@ -83,9 +83,9 @@ namespace XIVAICompanion
             ImGui.SetWindowSize($"{Name} | Configuration", new Vector2(400, 300), ImGuiCond.Appearing);
             ImGui.Begin($"{Name} | Configuration", ref _drawConfigWindow, ImGuiWindowFlags.AlwaysAutoResize);
 
-            if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.Heart, out var kofiPressed, new UIHelper.HeaderIconOptions { Tooltip = "Support on Ko-fi" }) && kofiPressed)
+            if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.Heart, out var kofiPressed, new UIHelper.HeaderIconOptions { Tooltip = "Support Me" }) && kofiPressed)
             {
-                GenericHelpers.ShellStart("https://ko-fi.com/lucillebagul");
+                GenericHelpers.ShellStart("https://sociabuzz.com/lucillebagul");
             }
 
             if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.TheaterMasks, out var openAutoRpPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Auto Role-Play Window" }) && openAutoRpPressed)
