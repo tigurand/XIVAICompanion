@@ -25,7 +25,7 @@ namespace XIVAICompanion
             {
                 if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.Heart, out var kofiPressed, new UIHelper.HeaderIconOptions { Tooltip = "Support Me" }) && kofiPressed)
                 {
-                    GenericHelpers.ShellStart("https://sociabuzz.com/lucillebagul");
+                    GenericHelpers.ShellStart("https://linktr.ee/LucilleBagul");
                 }
 
                 if (UIHelper.AddHeaderIcon(Service.PluginInterface, "autorp_button", FontAwesomeIcon.TheaterMasks, out var openAutoRpPressed, new UIHelper.HeaderIconOptions { Tooltip = "Open Auto Role-Play Window" }) && openAutoRpPressed)
