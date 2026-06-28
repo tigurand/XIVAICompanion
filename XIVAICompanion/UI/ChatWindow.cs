@@ -229,7 +229,7 @@ namespace XIVAICompanion
                 if (_isAutoRpRunning)
                 {
                     ImGui.SameLine();
-                    ImGui.Checkbox("OOC", ref _chatOocMode);
+                    ImGui.Checkbox("Whisper", ref _chatWhisperMode);
                 }
 
                 if (previousSearchMode != _searchModeBuffer)

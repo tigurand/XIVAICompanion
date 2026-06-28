@@ -174,10 +174,10 @@ namespace XIVAICompanion
         private bool _tempSearchMode = false;
         private bool _tempThinkMode = false;
         private bool _tempFreshMode = false;
-        private bool _tempOocMode = false;
+        private bool _tempWhisperMode = false;
 
         private bool _chatFreshMode = false;
-        private bool _chatOocMode = false;
+        private bool _chatWhisperMode = false;
 
         // Auto RP Stuff
         private bool _drawAutoRpWindow;
@@ -340,9 +340,9 @@ namespace XIVAICompanion
                 ShowInHelp = true
             });
 
-            Service.CommandManager.AddHandler("/aiooc", new CommandInfo(OnCommand)
+            Service.CommandManager.AddHandler("/aiwhisper", new CommandInfo(OnCommand)
             {
-                HelpMessage = "Sends a private, Out-Of-Character prompt. Only available with Auto Role-Play.",
+                HelpMessage = "Speak directly to the AI without forwarding your message to your conversation partner.",
                 ShowInHelp = true
             });
 
@@ -995,7 +995,7 @@ namespace XIVAICompanion
             Service.CommandManager.RemoveHandler("/aisearch");
             Service.CommandManager.RemoveHandler("/aithink");
             Service.CommandManager.RemoveHandler("/aifresh");
-            Service.CommandManager.RemoveHandler("/aiooc");
+            Service.CommandManager.RemoveHandler("/aiwhisper");
             Service.CommandManager.RemoveHandler("/aidev");
             Service.CommandManager.RemoveHandler("/ainormal");
             Service.CommandManager.RemoveHandler("/aimode");

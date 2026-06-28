@@ -25,7 +25,7 @@ namespace XIVAICompanion
                     {
                         _isAutoRpRunning = false;
                         Service.ChatGui.ChatMessage -= OnChatMessage;
-                        _chatOocMode = false;
+                        _chatWhisperMode = false;
                         configuration.AutoRpConfig.TargetName = _autoRpTargetNameBuffer;
                         configuration.Save();
                         Service.Log.Info("Auto RP Mode Stopped.");

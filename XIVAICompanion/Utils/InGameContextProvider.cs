@@ -138,7 +138,9 @@ namespace XIVAICompanion.Utils
                 : $"UTC{(offset >= TimeSpan.Zero ? "+" : "-")}{offset:hh\\:mm}";
             var et = GetEorzeaTime();
 
-            contextLines.Add("=== Player Information ===");
+            contextLines.Add("=== Context Start ===");
+
+            contextLines.Add("\n=== Player Information ===");
             contextLines.Add($"Race: {playerContext.Race}");
             contextLines.Add($"Gender: {playerContext.Gender}");
             contextLines.Add($"Clan: {playerContext.Clan}");
@@ -175,6 +177,9 @@ namespace XIVAICompanion.Utils
                     }
                 }
             }
+
+            contextLines.Add("\n=== Context End ===");
+            contextLines.Add("\nUse provided context only if asked or if it naturally fits the conversation flow. Avoid reporting those context unprompted.");
 
             return string.Join("\n", contextLines) + "\n\n";
         }

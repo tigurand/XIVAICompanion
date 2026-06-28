@@ -315,47 +315,47 @@ namespace XIVAICompanion
                     }
                     break;
 
-                case "/aiooc":
+                case "/aiwhisper":
                     if (!_isAutoRpRunning)
                     {
-                        PrintSystemMessage($"{_aiNameBuffer}>> OOC mode can only be used when Auto Role-Play is enabled.");
+                        PrintSystemMessage($"{_aiNameBuffer}>> Whisper mode can only be used when Auto Role-Play is enabled.");
                         return;
                     }
 
                     if (string.IsNullOrWhiteSpace(args))
                     {
-                        _chatOocMode = !_chatOocMode;
-                        PrintSystemMessage(_chatOocMode
-                            ? $"{_aiNameBuffer}>> OOC mode is now enabled."
-                            : $"{_aiNameBuffer}>> OOC mode is now disabled.");
+                        _chatWhisperMode = !_chatWhisperMode;
+                        PrintSystemMessage(_chatWhisperMode
+                            ? $"{_aiNameBuffer}>> Whisper mode is now enabled."
+                            : $"{_aiNameBuffer}>> Whisper mode is now disabled.");
                     }
                     else if (args.Equals("on", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!_chatOocMode)
+                        if (!_chatWhisperMode)
                         {
-                            _chatOocMode = true;
-                            PrintSystemMessage($"{_aiNameBuffer}>> OOC mode is now enabled.");
+                            _chatWhisperMode = true;
+                            PrintSystemMessage($"{_aiNameBuffer}>> Whisper mode is now enabled.");
                         }
                         else
                         {
-                            PrintSystemMessage($"{_aiNameBuffer}>> OOC mode is already enabled.");
+                            PrintSystemMessage($"{_aiNameBuffer}>> Whisper mode is already enabled.");
                         }
                     }
                     else if (args.Equals("off", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (_chatOocMode)
+                        if (_chatWhisperMode)
                         {
-                            _chatOocMode = false;
-                            PrintSystemMessage($"{_aiNameBuffer}>> OOC mode is now disabled.");
+                            _chatWhisperMode = false;
+                            PrintSystemMessage($"{_aiNameBuffer}>> Whisper mode is now disabled.");
                         }
                         else
                         {
-                            PrintSystemMessage($"{_aiNameBuffer}>> OOC mode is already disabled.");
+                            PrintSystemMessage($"{_aiNameBuffer}>> Whisper mode is already disabled.");
                         }
                     }
                     else
                     {
-                        _tempOocMode = true;
+                        _tempWhisperMode = true;
                         ProcessPrompt(args);
                     }
                     break;
@@ -415,7 +415,7 @@ namespace XIVAICompanion
                     _searchModeBuffer = false;
                     _thinkModeBuffer = false;
                     _chatFreshMode = false;
-                    _chatOocMode = false;
+                    _chatWhisperMode = false;
                     PrintSystemMessage($"{_aiNameBuffer}>> Disabled all modes.");
                     break;
 
@@ -423,7 +423,7 @@ namespace XIVAICompanion
                     string isSearchOn = _searchModeBuffer ? "On" : "Off";
                     string isThinkOn = _thinkModeBuffer ? "On" : "Off";
                     string isFreshOn = _chatFreshMode ? "On" : "Off";
-                    string isOOCOn = _chatOocMode ? "On" : "Off";
+                    string isWhisperOn = _chatWhisperMode ? "On" : "Off";
 
                     PrintSystemMessage($"{_aiNameBuffer}>> Current mode status:");
                     PrintSystemMessage($"Web search mode: {isSearchOn}");
@@ -431,7 +431,7 @@ namespace XIVAICompanion
                     PrintSystemMessage($"Fresh mode: {isFreshOn}");
                     if (_isAutoRpRunning)
                     {
-                        PrintSystemMessage($"OOC mode: {isOOCOn}");
+                        PrintSystemMessage($"Whisper mode: {isWhisperOn}");
                     }
                     break;
 
@@ -453,7 +453,7 @@ namespace XIVAICompanion
                     PrintSystemMessage("/aisearch [prompt] - Uses Web Search for information from the internet. Can also be toggled.");
                     PrintSystemMessage("/aithink [prompt] - Slower, more thoughtful responses for complex questions. Can also be toggled.");
                     PrintSystemMessage("/aifresh [prompt] - Ignores conversation history for a single, clean response. Can also be toggled.");
-                    PrintSystemMessage("/aiooc [prompt] - Sends a private, Out-Of-Character prompt. Only available with Auto Role-Play. Can also be toggled.");
+                    PrintSystemMessage("/aiwhisper [prompt] - Speak directly to the AI without forwarding your message to your conversation partner.");
                     PrintSystemMessage("/ainormal - Turns off all modes.");
                     PrintSystemMessage("/aimode - Displays current modes status");
                     PrintSystemMessage("/aicfg - Opens the configuration window.");

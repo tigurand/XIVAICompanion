@@ -139,7 +139,7 @@ namespace XIVAICompanion
             }
         }
 
-        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
+        private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempWhisperMode = false)
         {
             var systemPrompt = GetSystemPrompt(partnerName);
             var removeLineBreaks = configuration.RemoveLineBreaks;
@@ -186,7 +186,7 @@ namespace XIVAICompanion
 
             foreach (var profile in profilesToTry)
             {
-                ProviderResult result = await SendPromptInternal(input, profile, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isLogin, tempSearchMode, tempThinkMode, tempFreshMode, tempOocMode);
+                ProviderResult result = await SendPromptInternal(input, profile, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isLogin, tempSearchMode, tempThinkMode, tempFreshMode, tempWhisperMode);
                 if (result.WasSuccessful) return;
                 failedAttempts.Add((profile, result));
 
@@ -330,7 +330,7 @@ namespace XIVAICompanion
 
         private async Task<ProviderResult> SendPromptInternal(string input, ModelProfile profile, bool isStateless, OutputTarget outputTarget, string systemPrompt,
                                                  bool removeLineBreaks, bool showAdditionalInfo, bool forceHistory = false, XivChatType? replyChannel = null,
-                                                 List<Content>? conversationHistory = null, bool isFreshLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempOocMode = false)
+                                                 List<Content>? conversationHistory = null, bool isFreshLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempWhisperMode = false)
         {
             int responseTokensToUse = profile.MaxTokens;
             string currentPrompt = input.Replace('　', ' ').Trim();
@@ -338,7 +338,7 @@ namespace XIVAICompanion
             bool isSearch = (configuration.SearchMode || tempSearchMode) && !isFreshLogin;
             bool isThink = (configuration.ThinkMode || tempThinkMode) && !isFreshLogin;
             bool isFresh = (_chatFreshMode || tempFreshMode) && !isFreshLogin;
-            bool isOoc = (_chatOocMode || tempOocMode) && !isFreshLogin;
+            bool isWhisper = (_chatWhisperMode || tempWhisperMode) && !isFreshLogin;
 
             int thinkingBudget = isThink ? maxResponseTokens : defaultThinkingBudget;
             bool useWebSearch = isSearch;
@@ -767,16 +767,16 @@ namespace XIVAICompanion
         {
             string currentPrompt = rawPrompt.Replace('　', ' ').Trim();
             bool isFresh = _chatFreshMode || _tempFreshMode;
-            bool isOoc = _chatOocMode || _tempOocMode;
+            bool isWhisper = _chatWhisperMode || _tempWhisperMode;
             string processedPrompt = currentPrompt;
             string userMessageContent = currentPrompt;
 
             string partnerName;
-            if (isOoc && !string.IsNullOrEmpty(_currentRpPartnerName)) partnerName = _currentRpPartnerName;
+            if (isWhisper && !string.IsNullOrEmpty(_currentRpPartnerName)) partnerName = _currentRpPartnerName;
             else if (_isAutoRpRunning && !string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer)) partnerName = _autoRpTargetNameBuffer;
             else partnerName = GetPlayerDisplayName();
 
-            _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = partnerName, Message = isOoc ? $"[OOC] {userMessageContent}" : userMessageContent });
+            _currentSessionChatLog.Add(new ChatMessage { Timestamp = DateTime.Now, Author = partnerName, Message = isWhisper ? $"[Whisper] {userMessageContent}" : userMessageContent });
             var historyEntry = historyOverride ?? rawPrompt;
             _chatInputHistory.Remove(historyEntry);
             _chatInputHistory.Add(historyEntry);
@@ -785,20 +785,20 @@ namespace XIVAICompanion
             _shouldScrollToBottom = true;
 
             string processedPromptForApi = ProcessTextAliases(processedPrompt);
-            OutputTarget outputTarget = isOoc ? OutputTarget.PluginWindow : (_isAutoRpRunning ? OutputTarget.GameChat : OutputTarget.PluginDebug);
+            OutputTarget outputTarget = isWhisper ? OutputTarget.PluginWindow : (_isAutoRpRunning ? OutputTarget.GameChat : OutputTarget.PluginDebug);
             bool isStateless = isFresh;
 
-            if (configuration.ShowPrompt && !isOoc && !_isAutoRpRunning) PrintMessageToChat($"{GetPlayerDisplayName()}: {userMessageContent}");
+            if (configuration.ShowPrompt && !isWhisper && !_isAutoRpRunning) PrintMessageToChat($"{GetPlayerDisplayName()}: {userMessageContent}");
 
             bool tSearch = _tempSearchMode;
             bool tThink = _tempThinkMode;
             bool tFresh = _tempFreshMode;
-            bool tOoc = _tempOocMode;
+            bool tWhisper = _tempWhisperMode;
 
             Task.Run(async () =>
             {
-                await SendPrompt(processedPromptForApi, isStateless, outputTarget, partnerName, false, tSearch, tThink, tFresh, tOoc);
-                _tempSearchMode = false; _tempThinkMode = false; _tempFreshMode = false; _tempOocMode = false;
+                await SendPrompt(processedPromptForApi, isStateless, outputTarget, partnerName, false, tSearch, tThink, tFresh, tWhisper);
+                _tempSearchMode = false; _tempThinkMode = false; _tempFreshMode = false; _tempWhisperMode = false;
             });
         }
 
