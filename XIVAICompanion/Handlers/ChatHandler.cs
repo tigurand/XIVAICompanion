@@ -103,7 +103,7 @@ namespace XIVAICompanion
                 return;
             }
 
-            if (_isAutoRpRunning && IsRpChannelEnabled(message.LogKind))
+            if (_isAutoRpRunning && !_openListenerModeBuffer && IsRpChannelEnabled(message.LogKind))
             {
                 if (string.IsNullOrWhiteSpace(_autoRpTargetNameBuffer) || _autoRpTargetNameBuffer == _localPlayerName) return;
                 if (IsAutoRpProcessing()) return;
