@@ -130,9 +130,11 @@ namespace XIVAICompanion
         private bool _hasGreetedThisSession = false;
         private bool _enableHistoryBuffer;
         private int _conversationHistoryLimitBuffer;
+        private readonly object _conversationCacheLock = new();
         private readonly Dictionary<string, List<Content>> _conversationCache = new();
         private readonly List<string> _conversationCacheLru = new();
         private const int MaxConversationCacheSize = 10;
+        private DirectoryInfo _conversationHistoryFolder;
         private bool _enableAutoFallbackBuffer;
 
         private bool _showPromptBuffer;
@@ -253,17 +255,26 @@ namespace XIVAICompanion
 
             UpdateCurrentProvider();
 
+            _personaFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "Personas"));
+            _chatLogsFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "ChatLogs"));
+            _conversationHistoryFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "ConversationHistory"));
+
             LoadAutoRpConfigIntoBuffers();
             LoadConfigIntoBuffers();
-            InitializeConversation();
 
             if (!string.IsNullOrEmpty(configuration.MinionToReplace) && !string.IsNullOrEmpty(configuration.AIName))
             {
                 _minionNamingManager.UpdateNamingConfiguration(configuration.MinionToReplace, configuration.AIName, _glamouredMinionObjectId);
             }
 
-            _personaFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "Personas"));
-            _chatLogsFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "ChatLogs"));
+            if (_freshLoginBuffer)
+            {
+                InitializeConversation();
+            }
+            else
+            {
+                LoadConversationHistoryFromDisk();
+            }
             LoadAvailablePersonas();
             LoadHistoricalLogs(configuration.AIName);
             DeleteOldLogs();
@@ -858,42 +869,198 @@ namespace XIVAICompanion
 
         private List<Content> GetHistoryForPlayer(string playerName)
         {
-            if (_conversationCache.TryGetValue(playerName, out var history))
+            lock (_conversationCacheLock)
             {
-                _conversationCacheLru.Remove(playerName);
+                if (_conversationCache.TryGetValue(playerName, out var history))
+                {
+                    _conversationCacheLru.Remove(playerName);
+                    _conversationCacheLru.Add(playerName);
+                    SaveConversationHistoryToDisk();
+                    return history;
+                }
+
+                if (_conversationCache.Count >= MaxConversationCacheSize)
+                {
+                    var lruPlayer = _conversationCacheLru[0];
+
+                    _conversationCache.Remove(lruPlayer);
+                    _conversationCacheLru.RemoveAt(0);
+                    Service.Log.Info($"Conversation cache full. Evicting history for '{lruPlayer}'.");
+                }
+
+                var newHistory = new List<Content>
+                {
+                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = GetSystemPrompt(playerName) } } },
+                    new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } }
+                };
+
+                _conversationCache[playerName] = newHistory;
                 _conversationCacheLru.Add(playerName);
-                return history;
+
+                Service.Log.Info($"No history found for '{playerName}'. Created a new conversation cache entry.");
+
+                SaveConversationHistoryToDisk();
+
+                return newHistory;
             }
-
-            if (_conversationCache.Count >= MaxConversationCacheSize)
-            {
-                var lruPlayer = _conversationCacheLru[0];
-
-                _conversationCache.Remove(lruPlayer);
-                _conversationCacheLru.RemoveAt(0);
-                Service.Log.Info($"Conversation cache full. Evicting history for '{lruPlayer}'.");
-            }
-
-            var newHistory = new List<Content>
-            {
-                new Content { Role = "user", Parts = new List<Part> { new Part { Text = GetSystemPrompt(playerName) } } },
-                new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } }
-            };
-
-            _conversationCache[playerName] = newHistory;
-            _conversationCacheLru.Add(playerName);
-
-            Service.Log.Info($"No history found for '{playerName}'. Created a new conversation cache entry.");
-
-            return newHistory;
         }
 
         private void InitializeConversation()
         {
-            _conversationCache.Clear();
-            _conversationCacheLru.Clear();
-            _currentRpPartnerName = string.Empty;
-            Service.Log.Info("All conversation histories have been reset.");
+            lock (_conversationCacheLock)
+            {
+                _conversationCache.Clear();
+                _conversationCacheLru.Clear();
+                _currentRpPartnerName = string.Empty;
+                ClearConversationHistoryOnDisk();
+                Service.Log.Info("All conversation histories have been reset.");
+            }
+        }
+
+        private void SaveConversationHistoryToDisk()
+        {
+            try
+            {
+                lock (_conversationCacheLock)
+                {
+                    if (_conversationHistoryFolder == null)
+                    {
+                        _conversationHistoryFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "ConversationHistory"));
+                    }
+
+                    if (!_conversationHistoryFolder.Exists)
+                    {
+                        _conversationHistoryFolder.Create();
+                    }
+
+                    var savedData = new SavedConversationCache
+                    {
+                        LruKeys = new List<string>(_conversationCacheLru),
+                        Cache = new Dictionary<string, List<Content>>(_conversationCache)
+                    };
+
+                    string json = JsonConvert.SerializeObject(savedData, Formatting.Indented);
+                    string historyFilePath = Path.Combine(_conversationHistoryFolder.FullName, "history.json");
+                    string tempFilePath = Path.Combine(_conversationHistoryFolder.FullName, "history.json.tmp");
+
+                    File.WriteAllText(tempFilePath, json);
+                    File.Move(tempFilePath, historyFilePath, true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Service.Log.Error($"Failed to save conversation history to disk: {ex.Message}");
+            }
+        }
+
+        private void LoadConversationHistoryFromDisk()
+        {
+            lock (_conversationCacheLock)
+            {
+                try
+                {
+                    if (_conversationHistoryFolder == null)
+                    {
+                        _conversationHistoryFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "ConversationHistory"));
+                    }
+
+                    if (!_conversationHistoryFolder.Exists)
+                    {
+                        _conversationHistoryFolder.Create();
+                    }
+
+                    string historyFilePath = Path.Combine(_conversationHistoryFolder.FullName, "history.json");
+                    if (!File.Exists(historyFilePath))
+                    {
+                        Service.Log.Info("No saved conversation history found on disk.");
+                        _conversationCache.Clear();
+                        _conversationCacheLru.Clear();
+                        _currentRpPartnerName = string.Empty;
+                        return;
+                    }
+
+                    string json = File.ReadAllText(historyFilePath);
+                    var savedData = JsonConvert.DeserializeObject<SavedConversationCache>(json);
+
+                    if (savedData != null && savedData.Cache != null)
+                    {
+                        _conversationCache.Clear();
+                        foreach (var kvp in savedData.Cache)
+                        {
+                            _conversationCache[kvp.Key] = kvp.Value ?? new List<Content>();
+                        }
+
+                        _conversationCacheLru.Clear();
+                        if (savedData.LruKeys != null)
+                        {
+                            foreach (var key in savedData.LruKeys)
+                            {
+                                if (_conversationCache.ContainsKey(key) && !_conversationCacheLru.Contains(key))
+                                {
+                                    _conversationCacheLru.Add(key);
+                                }
+                            }
+                        }
+
+                        foreach (var key in _conversationCache.Keys)
+                        {
+                            if (!_conversationCacheLru.Contains(key))
+                            {
+                                _conversationCacheLru.Add(key);
+                            }
+                        }
+
+                        Service.Log.Info($"Loaded conversation history from disk ({_conversationCache.Count} entries).");
+                    }
+                    else
+                    {
+                        _conversationCache.Clear();
+                        _conversationCacheLru.Clear();
+                        _currentRpPartnerName = string.Empty;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Service.Log.Error($"Failed to load conversation history from disk: {ex.Message}");
+                    _conversationCache.Clear();
+                    _conversationCacheLru.Clear();
+                    _currentRpPartnerName = string.Empty;
+                }
+            }
+        }
+
+        private void ClearConversationHistoryOnDisk()
+        {
+            try
+            {
+                lock (_conversationCacheLock)
+                {
+                    if (_conversationHistoryFolder == null)
+                    {
+                        _conversationHistoryFolder = new DirectoryInfo(Path.Combine(Service.PluginInterface.GetPluginConfigDirectory(), "ConversationHistory"));
+                    }
+
+                    if (_conversationHistoryFolder.Exists)
+                    {
+                        string historyFilePath = Path.Combine(_conversationHistoryFolder.FullName, "history.json");
+                        if (File.Exists(historyFilePath))
+                        {
+                            File.Delete(historyFilePath);
+                        }
+
+                        string tempFilePath = Path.Combine(_conversationHistoryFolder.FullName, "history.json.tmp");
+                        if (File.Exists(tempFilePath))
+                        {
+                            File.Delete(tempFilePath);
+                        }
+                    }
+                    Service.Log.Info("Conversation history on disk cleared.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Service.Log.Error($"Failed to clear conversation history on disk: {ex.Message}");
+            }
         }
 
         private void PrintMessageToChat(string message)

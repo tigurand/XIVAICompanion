@@ -7,6 +7,12 @@ using Newtonsoft.Json.Linq;
 namespace XIVAICompanion.Models
 {
     // Common AI Models
+    public class SavedConversationCache
+    {
+        [JsonProperty("lruKeys")] public List<string> LruKeys { get; set; } = new();
+        [JsonProperty("cache")] public Dictionary<string, List<Content>> Cache { get; set; } = new();
+    }
+
     public class Content
     {
         [JsonProperty("role")] public string Role { get; set; } = string.Empty;

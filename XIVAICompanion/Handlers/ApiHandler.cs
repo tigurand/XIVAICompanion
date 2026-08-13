@@ -163,8 +163,8 @@ namespace XIVAICompanion
                 initialProfileIndex = configuration.GreetingModelIndex;
             }
 
-             if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
-             {
+            if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
+            {
                 profilesToTry.Add(configuration.ModelProfiles[initialProfileIndex]);
 
                 for (int i = 1; i < configuration.ModelProfiles.Count; i++)
@@ -176,7 +176,7 @@ namespace XIVAICompanion
                         profilesToTry.Add(candidate);
                     }
                 }
-             }
+            }
 
             if (profilesToTry.Count == 0)
             {
@@ -219,42 +219,42 @@ namespace XIVAICompanion
                     await Task.Delay(TimeSpan.FromSeconds(delaySec));
                 }
 
-            var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
+                var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
 
-            var profilesToTry = new List<ModelProfile>();
-            int initialProfileIndex = configuration.DefaultModelIndex;
+                var profilesToTry = new List<ModelProfile>();
+                int initialProfileIndex = configuration.DefaultModelIndex;
 
-             if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
-             {
-                profilesToTry.Add(configuration.ModelProfiles[initialProfileIndex]);
-
-                for (int i = 1; i < configuration.ModelProfiles.Count; i++)
+                if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
                 {
-                    int idx = (initialProfileIndex + i) % configuration.ModelProfiles.Count;
-                    var candidate = configuration.ModelProfiles[idx];
-                    if (candidate.UseAsFallback)
+                    profilesToTry.Add(configuration.ModelProfiles[initialProfileIndex]);
+
+                    for (int i = 1; i < configuration.ModelProfiles.Count; i++)
                     {
-                        profilesToTry.Add(candidate);
+                        int idx = (initialProfileIndex + i) % configuration.ModelProfiles.Count;
+                        var candidate = configuration.ModelProfiles[idx];
+                        if (candidate.UseAsFallback)
+                        {
+                            profilesToTry.Add(candidate);
+                        }
                     }
                 }
-             }
 
-            if (profilesToTry.Count == 0) return;
+                if (profilesToTry.Count == 0) return;
 
-            foreach (var profile in profilesToTry)
-            {
-                ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
-                if (result.WasSuccessful)
+                foreach (var profile in profilesToTry)
                 {
-                    _lastRpResponseTimestamp = DateTime.Now;
-                    return;
+                    ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
+                    if (result.WasSuccessful)
+                    {
+                        _lastRpResponseTimestamp = DateTime.Now;
+                        return;
+                    }
+                    failedAttempts.Add((profile, result));
+
+                    if (!configuration.EnableAutoFallback) break;
                 }
-                failedAttempts.Add((profile, result));
 
-                if (!configuration.EnableAutoFallback) break;
-            }
-
-            HandleApiError(failedAttempts, capturedMessage);
+                HandleApiError(failedAttempts, capturedMessage);
             }
             finally
             {
@@ -285,42 +285,42 @@ namespace XIVAICompanion
                     await Task.Delay(TimeSpan.FromSeconds(delaySec));
                 }
 
-            var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
+                var failedAttempts = new List<(ModelProfile Profile, ProviderResult Result)>();
 
-            var profilesToTry = new List<ModelProfile>();
-            int initialProfileIndex = configuration.DefaultModelIndex;
+                var profilesToTry = new List<ModelProfile>();
+                int initialProfileIndex = configuration.DefaultModelIndex;
 
-             if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
-             {
-                profilesToTry.Add(configuration.ModelProfiles[initialProfileIndex]);
-
-                for (int i = 1; i < configuration.ModelProfiles.Count; i++)
+                if (initialProfileIndex != -1 && initialProfileIndex < configuration.ModelProfiles.Count)
                 {
-                    int idx = (initialProfileIndex + i) % configuration.ModelProfiles.Count;
-                    var candidate = configuration.ModelProfiles[idx];
-                    if (candidate.UseAsFallback)
+                    profilesToTry.Add(configuration.ModelProfiles[initialProfileIndex]);
+
+                    for (int i = 1; i < configuration.ModelProfiles.Count; i++)
                     {
-                        profilesToTry.Add(candidate);
+                        int idx = (initialProfileIndex + i) % configuration.ModelProfiles.Count;
+                        var candidate = configuration.ModelProfiles[idx];
+                        if (candidate.UseAsFallback)
+                        {
+                            profilesToTry.Add(candidate);
+                        }
                     }
                 }
-             }
 
-            if (profilesToTry.Count == 0) return;
+                if (profilesToTry.Count == 0) return;
 
-            foreach (var profile in profilesToTry)
-            {
-                ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
-                if (result.WasSuccessful)
+                foreach (var profile in profilesToTry)
                 {
-                    _lastRpResponseTimestamp = DateTime.Now;
-                    return;
+                    ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
+                    if (result.WasSuccessful)
+                    {
+                        _lastRpResponseTimestamp = DateTime.Now;
+                        return;
+                    }
+                    failedAttempts.Add((profile, result));
+
+                    if (!configuration.EnableAutoFallback) break;
                 }
-                failedAttempts.Add((profile, result));
 
-                if (!configuration.EnableAutoFallback) break;
-            }
-
-            HandleApiError(failedAttempts, capturedMessage);
+                HandleApiError(failedAttempts, capturedMessage);
             }
             finally
             {
@@ -343,15 +343,16 @@ namespace XIVAICompanion
             int thinkingBudget = isThink ? maxResponseTokens : defaultThinkingBudget;
             bool useWebSearch = isSearch;
 
-            string finalUserPrompt = string.Empty;
+            string finalUserPrompt = currentPrompt;
+
+            string effectiveSystemPrompt = systemPrompt;
             if (useWebSearch && profile.ProviderType == AiProviderType.Gemini && (!profile.UseTavilyInstead || string.IsNullOrEmpty(profile.TavilyApiKey)))
             {
-                finalUserPrompt = "[SYSTEM COMMAND: GOOGLE SEARCH]\n" +
+                effectiveSystemPrompt += "\n\n[SYSTEM COMMAND: GOOGLE SEARCH]\n" +
                     "1.  **PRIMARY DIRECTIVE:** Check if Google Search tool is needed to answer the *entire* User Message.\n" +
                     "2.  **SECONDARY DIRECTIVE:** If needed, immediately use the Google Search tool to answer the *entire* User Message.\n" +
-                    "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.\n\n";
+                    "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.";
             }
-            finalUserPrompt += $"--- User Message ---\n{currentPrompt}";
 
             bool shouldPreSearchWithTavily = useWebSearch
                 && !string.IsNullOrEmpty(profile.TavilyApiKey)
@@ -367,10 +368,9 @@ namespace XIVAICompanion
                 if (!string.IsNullOrEmpty(tavilyResults) && tavilyResults.Length > maxTavilyChars)
                     tavilyResults = tavilyResults.Substring(0, maxTavilyChars) + "\n... (truncated)";
 
-                finalUserPrompt = "[SYSTEM COMMAND: TAVILY WEB SEARCH]\n" +
+                effectiveSystemPrompt += "\n\n[SYSTEM COMMAND: TAVILY WEB SEARCH]\n" +
                                 "Use the following web search results to answer the user, prefer them over prior knowledge.\n\n" +
-                                tavilyResults + "\n\n" +
-                                finalUserPrompt;
+                                tavilyResults;
 
                 useWebSearch = false;
                 didPreSearchWithTavily = true;
@@ -388,7 +388,7 @@ namespace XIVAICompanion
             {
                 requestContents = new List<Content>
                 {
-                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = systemPrompt } } },
+                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = effectiveSystemPrompt } } },
                     new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } },
                     new Content { Role = "user", Parts = new List<Part> { new Part { Text = finalUserPrompt } } }
                 };
@@ -398,11 +398,11 @@ namespace XIVAICompanion
                 var activeHistory = (conversationHistory != null) ? new List<Content>(conversationHistory) : new List<Content>();
                 if (activeHistory.Count > 0)
                 {
-                    activeHistory[0] = new Content { Role = "user", Parts = new List<Part> { new Part { Text = systemPrompt } } };
+                    activeHistory[0] = new Content { Role = "user", Parts = new List<Part> { new Part { Text = effectiveSystemPrompt } } };
                 }
                 else
                 {
-                    activeHistory.Add(new Content { Role = "user", Parts = new List<Part> { new Part { Text = systemPrompt } } });
+                    activeHistory.Add(new Content { Role = "user", Parts = new List<Part> { new Part { Text = effectiveSystemPrompt } } });
                     activeHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = $"Understood. I am {_aiNameBuffer}. I will follow all instructions." } } });
                 }
 
@@ -423,7 +423,7 @@ namespace XIVAICompanion
             var request = new ProviderRequest
             {
                 Model = profile.ModelId,
-                SystemPrompt = systemPrompt,
+                SystemPrompt = effectiveSystemPrompt,
                 ConversationHistory = requestContents,
                 MaxTokens = responseTokensToUse,
                 Temperature = configuration.Temperature,
@@ -517,7 +517,10 @@ namespace XIVAICompanion
                 if (!result.WasSuccessful)
                 {
                     if (configuration.EnableConversationHistory && userTurn != null && conversationHistory != null)
+                    {
                         conversationHistory.Remove(userTurn);
+                        SaveConversationHistoryToDisk();
+                    }
                     return result;
                 }
 
@@ -532,6 +535,7 @@ namespace XIVAICompanion
                         conversationHistory.AddRange(requestContents);
                     }
                     conversationHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = sanitizedText } } });
+                    SaveConversationHistoryToDisk();
                 }
 
                 string finalResponse = removeLineBreaks ? sanitizedText.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ").Replace("  ", " ") : sanitizedText;
