@@ -467,7 +467,8 @@ namespace XIVAICompanion
                         ImGui.SetTooltip("Controls the randomness/creativity of AI responses.\n" +
                                          "0.0 = Very focused and deterministic\n" +
                                          "1.0 = Balanced (default)\n" +
-                                         "2.0 = Very creative and unpredictable");
+                                         "2.0 = Very creative and unpredictable\n\n" +
+                                         "Note: Google Gemini deprecated and ignores this value.");
                     }
 
                     ImGui.Spacing();

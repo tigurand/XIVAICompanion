@@ -13,6 +13,8 @@ namespace XIVAICompanion.Providers
 {
     public class GeminiProvider : IAiProvider
     {
+        private const string InteractionsEndpoint = "https://generativelanguage.googleapis.com/v1beta/interactions";
+
         private readonly HttpClient _httpClient;
 
         public string Name => "Gemini";
@@ -54,86 +56,98 @@ namespace XIVAICompanion.Providers
                 requestContents[0] = new Content { Role = "user", Parts = new List<Part> { new Part { Text = request.SystemPrompt } } };
             }
 
-            ThinkingConfig? thinkingConfig = null;
+            var interactionInput = new List<InteractionInput>();
+            foreach (var content in requestContents)
+            {
+                string text = string.Join("\n", content.Parts.Select(p => p.Text));
+                if (string.IsNullOrWhiteSpace(text)) continue;
+
+                interactionInput.Add(new InteractionInput
+                {
+                    Type = content.Role == "model" ? "model_output" : "user_input",
+                    Content = new List<InteractionContentBlock>
+                    {
+                        new InteractionContentBlock { Type = "text", Text = text }
+                    }
+                });
+            }
 
             var modelInfo = new GeminiModelInfo(profile.ModelId);
 
-            if (modelInfo.IsGemini3)
+            var generationConfig = new InteractionGenerationConfig
             {
-                thinkingConfig = new ThinkingConfig
-                {
-                    ThinkingLevel = request.IsThinkingEnabled
-                        ? ProviderConstants.GeminiThinkingLevel
-                        : "medium",
-                    IncludeThoughts = request.ShowThoughts
-                };
-            }
-            else if (request.IsThinkingEnabled && request.ThinkingBudget.HasValue)
-            {
-                thinkingConfig = new ThinkingConfig
-                {
-                    ThinkingBudget = request.ThinkingBudget.Value,
-                    IncludeThoughts = request.ShowThoughts
-                };
-            }
-
-            var geminiRequest = new GeminiRequest
-            {
-                Contents = requestContents,
-                GenerationConfig = new GenerationConfig
-                {
-                    MaxOutputTokens = request.MaxTokens,
-                    Temperature = request.Temperature,
-                    ThinkingConfig = thinkingConfig
-                },
-                SafetySettings = new List<SafetySetting>
-                {
-                    new SafetySetting { Category = "HARM_CATEGORY_HARASSMENT", Threshold = "BLOCK_NONE" },
-                    new SafetySetting { Category = "HARM_CATEGORY_HATE_SPEECH", Threshold = "BLOCK_NONE" },
-                    new SafetySetting { Category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", Threshold = "BLOCK_NONE" },
-                    new SafetySetting { Category = "HARM_CATEGORY_DANGEROUS_CONTENT", Threshold = "BLOCK_NONE" }
-                }
+                MaxOutputTokens = request.MaxTokens
             };
 
+            if (modelInfo.IsGemini3)
+            {
+                generationConfig.ThinkingLevel = request.IsThinkingEnabled
+                    ? ProviderConstants.GeminiThinkingLevel
+                    : ProviderConstants.GeminiThinkingLevelDefault;
+            }
+
+            if (request.ShowThoughts)
+            {
+                generationConfig.ThinkingSummaries = "auto";
+            }
+
+            var interactionRequest = new InteractionRequest
+            {
+                Model = profile.ModelId,
+                Input = interactionInput,
+                GenerationConfig = generationConfig
+            };
+
+            // TEMPORARILY DISABLED: custom safety settings are supported by the legacy
+            // generateContent API but are NOT yet available in the Interactions API (the field
+            // is rejected with "invalid_request"). Kept commented out for a while, in case Google implement it.
+            //
+            // interactionRequest.SafetySettings = new List<SafetySetting>
+            // {
+            //     new SafetySetting { Category = "HARM_CATEGORY_HARASSMENT", Threshold = "BLOCK_NONE" },
+            //     new SafetySetting { Category = "HARM_CATEGORY_HATE_SPEECH", Threshold = "BLOCK_NONE" },
+            //     new SafetySetting { Category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", Threshold = "BLOCK_NONE" },
+            //     new SafetySetting { Category = "HARM_CATEGORY_DANGEROUS_CONTENT", Threshold = "BLOCK_NONE" }
+            // };
 
             if (request.UseWebSearch)
             {
                 if (profile.UseTavilyInstead && !string.IsNullOrEmpty(profile.TavilyApiKey))
                 {
-                    geminiRequest.Tools = new List<Tool>
+                    interactionRequest.Tools = new List<Tool>
                     {
-                        new Tool { FunctionDeclarations = new List<FunctionDeclaration> 
-                        { 
-                            new FunctionDeclaration 
-                            { 
-                                Name = "web_search", 
+                        new Tool { Type = "function", FunctionDeclarations = new List<FunctionDeclaration>
+                        {
+                            new FunctionDeclaration
+                            {
+                                Name = "web_search",
                                 Description = "Search the web for current information using Tavily.",
-                                Parameters = new 
-                                { 
-                                    type = "OBJECT", 
+                                Parameters = new
+                                {
+                                    type = "OBJECT",
                                     properties = new { query = new { type = "STRING", description = "The search query" } },
                                     required = new[] { "query" }
                                 }
-                            } 
+                            }
                         } }
                     };
                 }
                 else
                 {
-                    geminiRequest.Tools = new List<Tool>
+                    interactionRequest.Tools = new List<Tool>
                     {
-                        new Tool { GoogleSearch = new GoogleSearch() },
-                        new Tool { UrlContext = new UrlContext() }
+                        new Tool { Type = "google_search" },
+                        new Tool { Type = "url_context" }
                     };
                 }
             }
 
             try
             {
-                var requestBody = JsonConvert.SerializeObject(geminiRequest, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+                var requestBody = JsonConvert.SerializeObject(interactionRequest, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
                 var requestContent = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
-                var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"https://generativelanguage.googleapis.com/v1beta/models/{profile.ModelId}:generateContent")
+                var requestMessage = new HttpRequestMessage(HttpMethod.Post, InteractionsEndpoint)
                 {
                     Content = requestContent
                 };
@@ -159,42 +173,81 @@ namespace XIVAICompanion.Providers
                     return result;
                 }
 
-                var allText = new List<string>();
-                var parts = result.ResponseJson?.SelectToken("candidates[0].content.parts");
+                var answerBlocks = new List<string>();
+                var thoughtBlocks = new List<string>();
 
-                if (parts != null)
+                var steps = result.ResponseJson?["steps"] as JArray;
+                if (steps != null)
                 {
-                    foreach (var part in parts)
+                    foreach (var step in steps)
                     {
-                        var partText = (string?)part.SelectToken("text");
-                        if (!string.IsNullOrEmpty(partText))
+                        string? stepType = (string?)step?["type"];
+
+                        if (string.Equals(stepType, "thought", StringComparison.OrdinalIgnoreCase))
                         {
-                            allText.Add(partText);
+                            var summary = step?["summary"] as JArray;
+                            if (summary == null) continue;
+
+                            foreach (var contentBlock in summary)
+                            {
+                                if (!string.Equals((string?)contentBlock?["type"], "text", StringComparison.OrdinalIgnoreCase)) continue;
+
+                                string? thoughtText = (string?)contentBlock?["text"];
+                                if (!string.IsNullOrEmpty(thoughtText)) thoughtBlocks.Add(thoughtText);
+                            }
+                        }
+                        else if (string.Equals(stepType, "model_output", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var content = step?["content"] as JArray;
+                            if (content == null) continue;
+
+                            foreach (var contentBlock in content)
+                            {
+                                if (!string.Equals((string?)contentBlock?["type"], "text", StringComparison.OrdinalIgnoreCase)) continue;
+
+                                string? answerText = (string?)contentBlock?["text"];
+                                if (!string.IsNullOrEmpty(answerText)) answerBlocks.Add(answerText);
+                            }
                         }
                     }
                 }
-                result.ResponseText = string.Join("\n\n", allText);
 
-                result.FinishReason = (string?)result.ResponseJson?.SelectToken("candidates[0].finishReason");
-                result.BlockReason = (string?)result.ResponseJson?.SelectToken("promptFeedback.blockReason");
+                string answer = string.Join("\n\n", answerBlocks);
 
-                if (result.FinishReason == "MAX_TOKENS" || result.FinishReason == "SAFETY" || result.FinishReason == "RECITATION" || result.FinishReason == "OTHER")
+                if (request.ShowThoughts && thoughtBlocks.Count > 0)
                 {
-                    // Even if we got some text, if it finished for these reasons, we might want to flag it as unsuccessful for fallback purposes
+                    string thoughts = string.Join("\n\n", thoughtBlocks);
+                    result.ResponseText = string.IsNullOrEmpty(answer) ? thoughts : $"{thoughts}\n\n{answer}";
+                }
+                else
+                {
+                    result.ResponseText = answer;
                 }
 
-                result.PromptTokens = (int?)result.ResponseJson?.SelectToken("usageMetadata.promptTokenCount") ?? 0;
-                result.ResponseTokens = (int?)result.ResponseJson?.SelectToken("usageMetadata.candidatesTokenCount") ?? 0;
-                if (result.ResponseTokens == 0)
-                {
-                    result.ResponseTokens = (int?)result.ResponseJson?.SelectToken("usageMetadata.completionTokenCount") ?? 0;
-                }
-                result.TotalTokens = result.PromptTokens + result.ResponseTokens;
+                result.FinishReason = (string?)result.ResponseJson?.SelectToken("stop_reason")
+                    ?? (string?)result.ResponseJson?.SelectToken("stopReason")
+                    ?? (string?)result.ResponseJson?.SelectToken("finish_reason")
+                    ?? (string?)result.ResponseJson?.SelectToken("finishReason");
+                result.BlockReason = (string?)result.ResponseJson?.SelectToken("prompt_feedback.block_reason")
+                    ?? (string?)result.ResponseJson?.SelectToken("promptFeedback.blockReason");
 
-                result.WasSuccessful = (int)response.StatusCode != 503 && result.ResponseTokens > 0;
-                
+                result.PromptTokens = (int?)result.ResponseJson?.SelectToken("usage_metadata.prompt_token_count")
+                    ?? (int?)result.ResponseJson?.SelectToken("usageMetadata.promptTokenCount")
+                    ?? (int?)result.ResponseJson?.SelectToken("usage.input_tokens")
+                    ?? (int?)result.ResponseJson?.SelectToken("usage.inputTokens") ?? 0;
+                result.ResponseTokens = (int?)result.ResponseJson?.SelectToken("usage_metadata.candidates_token_count")
+                    ?? (int?)result.ResponseJson?.SelectToken("usageMetadata.candidatesTokenCount")
+                    ?? (int?)result.ResponseJson?.SelectToken("usage.output_tokens")
+                    ?? (int?)result.ResponseJson?.SelectToken("usage.outputTokens") ?? 0;
+                result.TotalTokens = (int?)result.ResponseJson?.SelectToken("usage_metadata.total_token_count")
+                    ?? (int?)result.ResponseJson?.SelectToken("usageMetadata.totalTokenCount")
+                    ?? (result.PromptTokens + result.ResponseTokens);
+
+                result.WasSuccessful = (int)response.StatusCode != 503
+                    && (result.ResponseTokens > 0 || !string.IsNullOrEmpty(result.ResponseText));
+
                 // If finish reason was MAX_TOKENS, original code treated it as failure for fallback.
-                if (result.FinishReason == "MAX_TOKENS") result.WasSuccessful = false;
+                if (string.Equals(result.FinishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase)) result.WasSuccessful = false;
 
                 return result;
             }

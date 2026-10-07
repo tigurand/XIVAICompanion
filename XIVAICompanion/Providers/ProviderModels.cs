@@ -53,7 +53,10 @@ namespace XIVAICompanion.Providers
     public static class ProviderConstants
     {
         public const string OpenAIReasoningEffort = "high";
+
+        // Gemini thinking_level ("minimal"|"low"|"medium"|"high").
         public const string GeminiThinkingLevel = "high";
+        public const string GeminiThinkingLevelDefault = "medium";
     }
 
     public class ModelProfile

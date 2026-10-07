@@ -360,6 +360,7 @@ namespace XIVAICompanion
                     || (profile.ProviderType == AiProviderType.Gemini && profile.UseTavilyInstead));
 
             bool didPreSearchWithTavily = false;
+            bool usedTavilySearch = false;
             if (shouldPreSearchWithTavily)
             {
                 string tavilyQuery = await ComposeTavilyQueryAsync(currentPrompt, systemPrompt, conversationHistory, profile);
@@ -374,6 +375,7 @@ namespace XIVAICompanion
 
                 useWebSearch = false;
                 didPreSearchWithTavily = true;
+                usedTavilySearch = true;
             }
 
             if (!configuration.EnableConversationHistory)
@@ -484,14 +486,48 @@ namespace XIVAICompanion
                         }
                     }
 
-                    var geminiCalls = result.ResponseJson.SelectToken("candidates[0].content.parts");
-                    if (geminiCalls != null && profile.UseTavilyInstead && !string.IsNullOrEmpty(profile.TavilyApiKey))
+                    // Gemini Interactions API function calls (steps[].content[].type == "function_call")
+                    if (!toolCalled && profile.UseTavilyInstead && !string.IsNullOrEmpty(profile.TavilyApiKey))
                     {
-                        var callPart = geminiCalls.FirstOrDefault(p => p["functionCall"] != null);
-                        if (callPart != null && callPart["functionCall"]?["name"]?.ToString() == "web_search")
+                        var interactionSteps = result.ResponseJson.SelectToken("steps") as JArray;
+                        if (interactionSteps != null)
                         {
-                            searchQuery = callPart["functionCall"]?["args"]?["query"]?.ToString() ?? string.Empty;
-                            toolCalled = true;
+                            foreach (var step in interactionSteps)
+                            {
+                                var stepContent = step?["content"] as JArray;
+                                if (stepContent == null) continue;
+
+                                foreach (var block in stepContent)
+                                {
+                                    bool isFunctionCall =
+                                        string.Equals((string?)block?["type"], "function_call", StringComparison.OrdinalIgnoreCase)
+                                        || block?["functionCall"] != null
+                                        || block?["function_call"] != null;
+                                    if (!isFunctionCall) continue;
+
+                                    string? functionName = (string?)block?["name"]
+                                        ?? (string?)block?["functionCall"]?["name"]
+                                        ?? (string?)block?["function_call"]?["name"];
+                                    if (functionName != "web_search") continue;
+
+                                    var argsToken = block?["args"] ?? block?["arguments"]
+                                        ?? block?["functionCall"]?["args"] ?? block?["function_call"]?["args"];
+                                    if (argsToken == null) continue;
+
+                                    JObject? parsedArgs = argsToken as JObject;
+                                    if (parsedArgs == null)
+                                    {
+                                        string argsStr = argsToken.ToString();
+                                        if (string.IsNullOrWhiteSpace(argsStr)) continue;
+                                        try { parsedArgs = JObject.Parse(argsStr); } catch { continue; }
+                                    }
+
+                                    searchQuery = parsedArgs["query"]?.Value<string>() ?? string.Empty;
+                                    toolCalled = true;
+                                    break;
+                                }
+                                if (toolCalled) break;
+                            }
                         }
                     }
 
@@ -507,6 +543,7 @@ namespace XIVAICompanion
 
                         Service.Log.Info($">> Web search: '{searchQuery}' => '{searchQueryToUse}'");
                         string searchResults = await TavilySearchHelper.SearchAsync(searchQueryToUse, profile.TavilyApiKey);
+                        usedTavilySearch = true;
                         var followUpHistory = new List<Content>(request.ConversationHistory);
                         followUpHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = (profile.ProviderType == AiProviderType.OpenAICompatible ? "TOOL_RESPONSE: " : "SEARCH_RESULTS: ") + searchResults } } });
                         request.ConversationHistory = followUpHistory;
@@ -579,15 +616,35 @@ namespace XIVAICompanion
                             ? $"ReasoningEffort='{ProviderConstants.OpenAIReasoningEffort}'"
                             : "ReasoningEffort='none'")
                         : geminiModelInfo.IsGemini3
-                            ? $"ThinkingLevel='{(isThink ? ProviderConstants.GeminiThinkingLevel : "medium")}'"
-                            : $"ThinkingBudget={thinkingBudget}";
+                            ? $"ThinkingLevel='{(isThink ? ProviderConstants.GeminiThinkingLevel : ProviderConstants.GeminiThinkingLevelDefault)}'"
+                            : "ThinkingLevel=<model default>";
 
-                var openAIModelInfo = new OpenAICompatibleModelInfo(profile.ModelId);
-                var temperature = openAIModelInfo.IsGPT5 ? 1 : configuration.Temperature;
+                // temperature/top_p/top_k are deprecated by Google for Gemini, only report the value for OpenAI-compatible providers.
+                string temperatureInfo = providerToUse.Name == "OpenAICompatible"
+                    ? $"Temperature={(new OpenAICompatibleModelInfo(profile.ModelId).IsGPT5 ? 1 : configuration.Temperature)}, "
+                    : string.Empty;
+
+                string webSearchInfo;
+                if (!isSearch)
+                {
+                    webSearchInfo = "None";
+                }
+                else if (usedTavilySearch)
+                {
+                    webSearchInfo = "Tavily";
+                }
+                else if (providerToUse.Name == "Gemini")
+                {
+                    webSearchInfo = "Gemini";
+                }
+                else
+                {
+                    webSearchInfo = "None";
+                }
 
                 Service.Log.Info(
                     $"API Call Success: ProviderType='{providerToUse.Name}', Model='{profile.ModelId}', HTTP Status={(int?)result.HttpResponse?.StatusCode} - {result.HttpResponse?.StatusCode}, " +
-                    $"ResponseTokenLimit={responseTokensToUse}, {reasoningInfo}, Temperature={temperature}, " +
+                    $"ResponseTokenLimit={responseTokensToUse}, {reasoningInfo}, WebSearch={webSearchInfo}, {temperatureInfo}" +
                     $"Tokens=[P:{result.PromptTokens}, R:{result.ResponseTokens}, T:{result.TotalTokens}], ResponseTime={result.ResponseTimeMs}ms"
                 );
 
@@ -611,8 +668,8 @@ namespace XIVAICompanion
 
             if (configuration.EnableAutoFallback && failedAttempts.Count > 1)
             {
-                string? finishReason = (string?)primaryResult.ResponseJson?.SelectToken("candidates[0].finishReason") ?? (string?)primaryResult.ResponseJson?.SelectToken("choices[0].finishReason");
-                string? blockReason = (string?)primaryResult.ResponseJson?.SelectToken("promptFeedback.blockReason");
+                string? finishReason = (string?)primaryResult.ResponseJson?.SelectToken("stop_reason") ?? (string?)primaryResult.ResponseJson?.SelectToken("candidates[0].finishReason") ?? (string?)primaryResult.ResponseJson?.SelectToken("choices[0].finishReason");
+                string? blockReason = (string?)primaryResult.ResponseJson?.SelectToken("prompt_feedback.block_reason") ?? (string?)primaryResult.ResponseJson?.SelectToken("promptFeedback.blockReason");
                 string primaryReason;
 
                 if (primaryResult.HttpResponse?.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
@@ -668,9 +725,11 @@ namespace XIVAICompanion
                 }
                 else if (primaryResult.ResponseJson != null && primaryResult.HttpResponse != null)
                 {
-                    string? blockReason = (string?)primaryResult.ResponseJson.SelectToken("promptFeedback.blockReason");
+                    string? blockReason = (string?)primaryResult.ResponseJson.SelectToken("prompt_feedback.block_reason")
+                        ?? (string?)primaryResult.ResponseJson.SelectToken("promptFeedback.blockReason");
 
-                    string? finishReason = (string?)primaryResult.ResponseJson.SelectToken("candidates[0].finishReason")
+                    string? finishReason = (string?)primaryResult.ResponseJson.SelectToken("stop_reason")
+                        ?? (string?)primaryResult.ResponseJson.SelectToken("candidates[0].finishReason")
                         ?? (string?)primaryResult.ResponseJson.SelectToken("candidates[0].finish_reason")
                         ?? (string?)primaryResult.ResponseJson.SelectToken("choices[0].finishReason")
                         ?? (string?)primaryResult.ResponseJson.SelectToken("choices[0].finish_reason");
@@ -750,8 +809,8 @@ namespace XIVAICompanion
                     for (int i = 0; i < failedAttempts.Count; i++)
                     {
                         var attempt = failedAttempts[i];
-                        string? finishReason = (string?)attempt.Result.ResponseJson?.SelectToken("candidates[0].finishReason") ?? (string?)attempt.Result.ResponseJson?.SelectToken("choices[0].finishReason");
-                        string? blockReason = (string?)attempt.Result.ResponseJson?.SelectToken("promptFeedback.blockReason");
+                        string? finishReason = (string?)attempt.Result.ResponseJson?.SelectToken("stop_reason") ?? (string?)attempt.Result.ResponseJson?.SelectToken("candidates[0].finishReason") ?? (string?)attempt.Result.ResponseJson?.SelectToken("choices[0].finishReason");
+                        string? blockReason = (string?)attempt.Result.ResponseJson?.SelectToken("prompt_feedback.block_reason") ?? (string?)attempt.Result.ResponseJson?.SelectToken("promptFeedback.blockReason");
                         string status = attempt.Result.HttpResponse != null ? $"{(int)attempt.Result.HttpResponse.StatusCode} - {attempt.Result.HttpResponse.ReasonPhrase}" : "N/A";
 
                         infoBuilder.AppendLine($"Attempt {i + 1} ({attempt.Profile.ProviderType} - {attempt.Profile.ModelId}): FAILED");
