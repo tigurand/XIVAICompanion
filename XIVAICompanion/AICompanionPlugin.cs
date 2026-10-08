@@ -96,8 +96,11 @@ namespace XIVAICompanion
         private string _profileApiKeyBuffer = string.Empty;
         private string _profileModelIdBuffer = string.Empty;
         private int _profileMaxTokensBuffer = 1024;
-        private bool _profileUseTavilyInsteadBuffer = false;
+        private SearchEngineType _profileSearchEngineBuffer = SearchEngineType.Default;
         private string _profileTavilyApiKeyBuffer = string.Empty;
+        private string _profileExaApiKeyBuffer = string.Empty;
+        private string _profileParallelApiKeyBuffer = string.Empty;
+        private string _profileFirecrawlApiKeyBuffer = string.Empty;
         private bool _profileUseAsFallbackBuffer = true;
 
         private int _defaultModelProfileIndexBuffer = -1;
@@ -136,6 +139,7 @@ namespace XIVAICompanion
         private const int MaxConversationCacheSize = 10;
         private DirectoryInfo _conversationHistoryFolder;
         private bool _enableAutoFallbackBuffer;
+        private bool _enableSearchEngineFallbackBuffer = true;
 
         private bool _showPromptBuffer;
         private bool _showThoughtsBuffer;
@@ -681,6 +685,7 @@ namespace XIVAICompanion
             _enableHistoryBuffer = configuration.EnableConversationHistory;
             _conversationHistoryLimitBuffer = configuration.ConversationHistoryLimit;
             _enableAutoFallbackBuffer = configuration.EnableAutoFallback;
+            _enableSearchEngineFallbackBuffer = configuration.EnableSearchEngineFallback;
             _useCustomColorsBuffer = configuration.UseCustomColors;
             _foregroundColorBuffer = configuration.ForegroundColor;
             _enableInGameContextBuffer = configuration.EnableInGameContext;

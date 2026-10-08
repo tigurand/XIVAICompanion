@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,9 +9,10 @@ namespace XIVAICompanion.Utils
 {
     public static class TavilySearchHelper
     {
-        public static async Task<string> SearchAsync(string query, string apiKey)
+        public static async Task<WebSearchResult> SearchAsync(string query, string apiKey)
         {
-            if (string.IsNullOrEmpty(apiKey)) return "Tavily API key is missing.";
+            if (string.IsNullOrEmpty(apiKey))
+                return new WebSearchResult { Success = false, Text = "Tavily API key is missing." };
 
             try
             {
@@ -30,7 +30,7 @@ namespace XIVAICompanion.Utils
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return $"Search failed with status: {response.StatusCode}";
+                    return new WebSearchResult { Success = false, Text = $"Search failed with status: {response.StatusCode}" };
                 }
 
                 var rawJson = await response.Content.ReadAsStringAsync();
@@ -39,11 +39,11 @@ namespace XIVAICompanion.Utils
 
                 if (results == null || !results.HasValues)
                 {
-                    return "No search results found.";
+                    return new WebSearchResult { Success = false, Text = "No search results found (Tavily)." };
                 }
 
                 var sb = new StringBuilder();
-                sb.AppendLine("Search Results:");
+                sb.AppendLine("Search Results (Tavily):");
                 foreach (var result in results)
                 {
                     string title = result["title"]?.ToString() ?? "No Title";
@@ -53,11 +53,11 @@ namespace XIVAICompanion.Utils
                     sb.AppendLine($"- {title} ({url}): {contentSnippet}");
                 }
 
-                return sb.ToString();
+                return new WebSearchResult { Success = true, Text = sb.ToString().TrimEnd() };
             }
             catch (Exception ex)
             {
-                return $"An error occurred during search: {ex.Message}";
+                return new WebSearchResult { Success = false, Text = $"An error occurred during search: {ex.Message}" };
             }
         }
     }

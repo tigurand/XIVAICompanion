@@ -50,6 +50,15 @@ namespace XIVAICompanion.Providers
         OpenAICompatible
     }
 
+    public enum SearchEngineType
+    {
+        Default,
+        Exa,
+        Firecrawl,
+        Parallel,
+        Tavily
+    }
+
     public static class ProviderConstants
     {
         public const string OpenAIReasoningEffort = "high";
@@ -68,8 +77,11 @@ namespace XIVAICompanion.Providers
         public string ModelId { get; set; } = string.Empty;
         public int MaxTokens { get; set; } = 1024;
 
-        // Tavily Web Search integration
-        public bool UseTavilyInstead { get; set; } = false;
+        // Web Search integration
+        public SearchEngineType SearchEngine { get; set; } = SearchEngineType.Default;        
+        public string ExaApiKey { get; set; } = string.Empty;        
+        public string FirecrawlApiKey { get; set; } = string.Empty;
+        public string ParallelApiKey { get; set; } = string.Empty;
         public string TavilyApiKey { get; set; } = string.Empty;
 
         // Fallback settings

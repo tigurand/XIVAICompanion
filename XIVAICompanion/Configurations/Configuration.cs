@@ -21,12 +21,12 @@ namespace XIVAICompanion.Configurations
 
         // Gemini Settings (Legacy/Backwards Compatibility or Global)
         public string ApiKey { get; set; } = "";
-        public string AImodel { get; set; } = "gemini-2.5-flash";
+        public string AImodel { get; set; } = "gemini-3.8-flash";
 
         // OpenAI Settings (Legacy/Backwards Compatibility or Global)
         public string OpenAiApiKey { get; set; } = "";
         public string OpenAiBaseUrl { get; set; } = "https://api.openai.com/v1";
-        public string OpenAiModel { get; set; } = "gpt-4o";
+        public string OpenAiModel { get; set; } = "gpt-6.1-sol";
 
         // General AI Settings
         public int MaxTokens { get; set; } = 1024;
@@ -48,6 +48,7 @@ namespace XIVAICompanion.Configurations
         public int ConversationHistoryLimit { get; set; } = 10;
         public bool FreshLogin { get; set; } = true;
         public bool EnableAutoFallback { get; set; } = true;
+        public bool EnableSearchEngineFallback { get; set; } = true;
         public bool EnableInGameContext { get; set; } = true;
         public bool EnableMimicking { get; set; } = true;
         public bool UsePetNicknames { get; set; } = false;
@@ -84,11 +85,13 @@ namespace XIVAICompanion.Configurations
         {
             pluginInterface = pInterface;
 
-            // Integrity Check: Ensure Tavily fields are initialized if existing profiles lack them
             if (ModelProfiles != null)
             {
                 foreach (var profile in ModelProfiles)
-                {
+                {                    
+                    if (profile.ExaApiKey == null) profile.ExaApiKey = string.Empty;
+                    if (profile.FirecrawlApiKey == null) profile.FirecrawlApiKey = string.Empty;
+                    if (profile.ParallelApiKey == null) profile.ParallelApiKey = string.Empty;                    
                     if (profile.TavilyApiKey == null) profile.TavilyApiKey = string.Empty;
                 }
             }

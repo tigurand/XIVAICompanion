@@ -53,9 +53,15 @@ namespace XIVAICompanion
             return block.Trim();
         }
 
-        private async Task<string?> DecideTavilyQueryAsync(string userQuery, string systemPrompt, List<Content>? conversationHistory, ModelProfile profile)
+        private sealed class SearchQueryDecision
         {
-            if (string.IsNullOrWhiteSpace(userQuery)) return null;
+            public bool Failed { get; init; }
+            public string? Query { get; init; }
+        }
+
+        private async Task<SearchQueryDecision> DecideSearchQueryAsync(string userQuery, string systemPrompt, List<Content>? conversationHistory, ModelProfile profile)
+        {
+            if (string.IsNullOrWhiteSpace(userQuery)) return new SearchQueryDecision { Query = null };
 
             try
             {
@@ -121,21 +127,67 @@ namespace XIVAICompanion
                 verdict = verdict.Trim().Trim('"', '\'', '`');
                 verdict = verdict.Replace("\r", " ").Replace("\n", " ").Replace("  ", " ").Trim();
 
-                if (string.IsNullOrWhiteSpace(verdict)) return null;
+                if (!decideResult.WasSuccessful)
+                {
+                    return new SearchQueryDecision { Failed = true };
+                }
+
+                if (string.IsNullOrWhiteSpace(verdict))
+                {
+                    return new SearchQueryDecision { Failed = true };
+                }
 
                 string normalized = verdict.Replace("_", "").Replace("-", "").Replace(" ", "").Replace(".", "").Trim();
-                if (normalized.StartsWith("NOSEARCH", StringComparison.OrdinalIgnoreCase)) return null;
+                if (normalized.StartsWith("NOSEARCH", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SearchQueryDecision { Query = null };
+                }
 
                 string rewritten = verdict;
                 if (rewritten.Length > 256) rewritten = rewritten.Substring(0, 256);
 
-                return rewritten;
+                return new SearchQueryDecision { Query = rewritten };
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Service.Log.Warning($">> Tavily search decision failed; skipping web search to save credits. Error: {ex.Message}");
-                return null;
+                return new SearchQueryDecision { Failed = true };
             }
+        }
+
+        private static string GetSearchEngineApiKey(ModelProfile profile, SearchEngineType engine)
+        {
+            switch (engine)
+            {
+                case SearchEngineType.Tavily: return profile.TavilyApiKey ?? string.Empty;
+                case SearchEngineType.Exa: return profile.ExaApiKey ?? string.Empty;
+                case SearchEngineType.Parallel: return profile.ParallelApiKey ?? string.Empty;
+                case SearchEngineType.Firecrawl: return profile.FirecrawlApiKey ?? string.Empty;
+                default: return string.Empty;
+            }
+        }
+
+        private List<SearchEngineType> BuildSearchEngineOrder(ModelProfile profile, SearchEngineType primary)
+        {
+            var order = new List<SearchEngineType>();
+
+            if (!string.IsNullOrEmpty(GetSearchEngineApiKey(profile, primary)))
+            {
+                order.Add(primary);
+            }
+
+            if (configuration.EnableSearchEngineFallback)
+            {
+                foreach (var engine in new[] { SearchEngineType.Tavily, SearchEngineType.Exa, SearchEngineType.Parallel, SearchEngineType.Firecrawl })
+                {
+                    if (engine == primary) continue;
+                    if (!string.IsNullOrEmpty(GetSearchEngineApiKey(profile, engine)))
+                    {
+                        order.Add(engine);
+                    }
+                }
+            }
+
+            return order;
         }
 
         private async Task SendPrompt(string input, bool isStateless, OutputTarget outputTarget, string partnerName, bool isLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempWhisperMode = false)
@@ -345,37 +397,89 @@ namespace XIVAICompanion
             string finalUserPrompt = currentPrompt;
 
             string effectiveSystemPrompt = systemPrompt;
-            if (useWebSearch && profile.ProviderType == AiProviderType.Gemini && (!profile.UseTavilyInstead || string.IsNullOrEmpty(profile.TavilyApiKey)))
-            {
-                effectiveSystemPrompt += "\n\n[SYSTEM COMMAND: GOOGLE SEARCH]\n" +
-                    "1.  **PRIMARY DIRECTIVE:** Check if Google Search tool is needed to answer the *entire* User Message.\n" +
-                    "2.  **SECONDARY DIRECTIVE:** If needed, immediately use the Google Search tool to answer the *entire* User Message.\n" +
-                    "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.";
-            }
 
-            bool isTavilySearchProfile = !string.IsNullOrEmpty(profile.TavilyApiKey)
-                && (profile.ProviderType == AiProviderType.OpenAICompatible
-                    || (profile.ProviderType == AiProviderType.Gemini && profile.UseTavilyInstead));
+            const string googleSearchCommand = "\n\n[SYSTEM COMMAND: GOOGLE SEARCH]\n" +
+                "1.  **PRIMARY DIRECTIVE:** Check if Google Search tool is needed to answer the *entire* User Message.\n" +
+                "2.  **SECONDARY DIRECTIVE:** If needed, immediately use the Google Search tool to answer the *entire* User Message.\n" +
+                "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.";
 
-            bool usedTavilySearch = false;
-            if (useWebSearch && isTavilySearchProfile)
+            SearchEngineType selectedSearchEngine = profile.SearchEngine;
+            bool usedGoogleSearch = false;
+            bool usedExternalSearch = false;
+            bool externalSearchAttempted = false;
+            bool searchDecisionSkipped = false;
+            bool searchDecisionFailed = false;
+            SearchEngineType usedSearchEngine = SearchEngineType.Default;
+
+            if (useWebSearch)
             {
-                string? tavilyQuery = await DecideTavilyQueryAsync(currentPrompt, systemPrompt, conversationHistory, profile);
-                if (!string.IsNullOrEmpty(tavilyQuery))
+                if (selectedSearchEngine == SearchEngineType.Default)
                 {
-                    string tavilyResults = await TavilySearchHelper.SearchAsync(tavilyQuery, profile.TavilyApiKey);
-                    const int maxTavilyChars = 6000;
-                    if (!string.IsNullOrEmpty(tavilyResults) && tavilyResults.Length > maxTavilyChars)
-                        tavilyResults = tavilyResults.Substring(0, maxTavilyChars) + "\n... (truncated)";
-
-                    effectiveSystemPrompt += "\n\n[SYSTEM COMMAND: TAVILY WEB SEARCH]\n" +
-                                    "Use the following web search results to answer the user, prefer them over prior knowledge.\n\n" +
-                                    tavilyResults;
-
-                    usedTavilySearch = true;
+                    if (profile.ProviderType == AiProviderType.Gemini)
+                    {
+                        effectiveSystemPrompt += googleSearchCommand;
+                        usedGoogleSearch = true;
+                    }
                 }
+                else
+                {
+                    var searchEngineOrder = BuildSearchEngineOrder(profile, selectedSearchEngine);
 
-                useWebSearch = false;
+                    if (searchEngineOrder.Count == 0)
+                    {
+                        if (profile.ProviderType == AiProviderType.Gemini)
+                        {
+                            effectiveSystemPrompt += googleSearchCommand;
+                            usedGoogleSearch = true;
+                        }
+                    }
+                    else
+                    {
+                        externalSearchAttempted = true;
+                        SearchQueryDecision decision = await DecideSearchQueryAsync(currentPrompt, systemPrompt, conversationHistory, profile);
+                        string? searchQuery = decision.Query;
+
+                        if (decision.Failed)
+                        {
+                            searchDecisionFailed = true;
+                            searchQuery = currentPrompt;
+                        }
+
+                        if (string.IsNullOrEmpty(searchQuery))
+                        {
+                            searchDecisionSkipped = true;
+                        }
+                        else
+                        {
+                            foreach (var engine in searchEngineOrder)
+                            {
+                                string engineKey = GetSearchEngineApiKey(profile, engine);
+                                if (string.IsNullOrEmpty(engineKey)) continue;
+
+                                WebSearchResult searchResult = await SearchEngineHelper.SearchAsync(engine, searchQuery, engineKey);
+                                if (searchResult != null && searchResult.Success && !string.IsNullOrWhiteSpace(searchResult.Text))
+                                {
+                                    string results = searchResult.Text;
+                                    const int maxSearchChars = 6000;
+                                    if (results.Length > maxSearchChars)
+                                        results = results.Substring(0, maxSearchChars) + "\n... (truncated)";
+
+                                    effectiveSystemPrompt += $"\n\n[SYSTEM COMMAND: {SearchEngineHelper.GetEngineDisplayName(engine).ToUpperInvariant()} WEB SEARCH]\n" +
+                                                    "Use the following web search results to answer the user, prefer them over prior knowledge.\n\n" +
+                                                    results;
+
+                                    usedExternalSearch = true;
+                                    usedSearchEngine = engine;
+                                    break;
+                                }
+
+                                if (!configuration.EnableSearchEngineFallback) break;
+                            }
+                        }
+                    }
+
+                    useWebSearch = false;
+                }
             }
 
             if (!configuration.EnableConversationHistory)
@@ -519,15 +623,23 @@ namespace XIVAICompanion
                 {
                     webSearchInfo = "None";
                 }
-                else if (usedTavilySearch)
+                else if (usedExternalSearch)
                 {
-                    webSearchInfo = "Tavily";
+                    webSearchInfo = SearchEngineHelper.GetEngineDisplayName(usedSearchEngine);
                 }
-                else if (isTavilySearchProfile)
+                else if (externalSearchAttempted && searchDecisionSkipped)
                 {
-                    webSearchInfo = "Tavily (not needed)";
+                    webSearchInfo = $"{SearchEngineHelper.GetEngineDisplayName(selectedSearchEngine)} (not needed)";
                 }
-                else if (providerToUse.Name == "Gemini")
+                else if (externalSearchAttempted && searchDecisionFailed)
+                {
+                    webSearchInfo = $"{SearchEngineHelper.GetEngineDisplayName(selectedSearchEngine)} (decision failed)";
+                }
+                else if (externalSearchAttempted)
+                {
+                    webSearchInfo = $"{SearchEngineHelper.GetEngineDisplayName(selectedSearchEngine)} (failed)";
+                }
+                else if (usedGoogleSearch || providerToUse.Name == "Gemini")
                 {
                     webSearchInfo = "Gemini";
                 }

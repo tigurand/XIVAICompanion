@@ -128,8 +128,11 @@ namespace XIVAICompanion
                                      _profileApiKeyBuffer = string.Empty;
                                      _profileModelIdBuffer = string.Empty;
                                      _profileMaxTokensBuffer = 1024;
-                                     _profileUseTavilyInsteadBuffer = false;
+                                     _profileSearchEngineBuffer = SearchEngineType.Default;
                                      _profileTavilyApiKeyBuffer = string.Empty;
+                                     _profileExaApiKeyBuffer = string.Empty;
+                                     _profileParallelApiKeyBuffer = string.Empty;
+                                     _profileFirecrawlApiKeyBuffer = string.Empty;
                                      _profileUseAsFallbackBuffer = true;
                                  }
                                  else
@@ -141,8 +144,11 @@ namespace XIVAICompanion
                                      _profileApiKeyBuffer = profile.ApiKey;
                                      _profileModelIdBuffer = profile.ModelId;
                                      _profileMaxTokensBuffer = profile.MaxTokens;
-                                     _profileUseTavilyInsteadBuffer = profile.UseTavilyInstead;
+                                     _profileSearchEngineBuffer = profile.SearchEngine;
                                      _profileTavilyApiKeyBuffer = profile.TavilyApiKey;
+                                     _profileExaApiKeyBuffer = profile.ExaApiKey;
+                                     _profileParallelApiKeyBuffer = profile.ParallelApiKey;
+                                     _profileFirecrawlApiKeyBuffer = profile.FirecrawlApiKey;
                                      _profileUseAsFallbackBuffer = profile.UseAsFallback;
                                  }
                              }
@@ -183,7 +189,7 @@ namespace XIVAICompanion
                         ImGui.Text("Model ID:");
                     ImGui.SetNextItemWidth(610);
                     ImGui.InputText("##profileModelId", ref _profileModelIdBuffer, 128);
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("e.g., gemini-2.5-flash or gpt-4o");
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("e.g., gemini-3.8-flash or gpt-6.1-sol");
 
                     ImGui.Text("Max Tokens:");
                     ImGui.SetNextItemWidth(610);
@@ -197,24 +203,47 @@ namespace XIVAICompanion
                                          "Also controls thinking budget on Think Mode (Gemini).");
                     }
 
-                    if (_profileProviderBuffer == AiProviderType.Gemini)
+                    ImGui.Spacing();
+                    ImGui.Text("Web Search Engine:");
+                    ImGui.SetNextItemWidth(610);
+                    if (ImGui.BeginCombo("##profileSearchEngine", GetSearchEngineLabel(_profileProviderBuffer, _profileSearchEngineBuffer)))
                     {
-                        ImGui.Checkbox("Use Tavily instead of Google?", ref _profileUseTavilyInsteadBuffer);
-                        if (ImGui.IsItemHovered()) ImGui.SetTooltip("If checked, Tavily will be used for web search instead of Gemini's built-in Google Search.\nTavily is only used when the model decides a web search is needed.");
-                        
-                        ImGui.BeginDisabled(!_profileUseTavilyInsteadBuffer);
+                        foreach (var option in GetSearchEngineOptions(_profileProviderBuffer))
+                        {
+                            if (ImGui.Selectable(option.Label, _profileSearchEngineBuffer == option.Engine))
+                            {
+                                _profileSearchEngineBuffer = option.Engine;
+                            }
+                        }
+                        ImGui.EndCombo();
+                    }
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip(_profileProviderBuffer == AiProviderType.Gemini
+                            ? "The web search engine used in Search Mode.\n'Gemini (Google Search)' uses the model's built-in Google Search.\nExternal engines are only used when the model decides a web search is needed."
+                            : "The web search engine used in Search Mode.\n'None' disables external web search.\nThe model decides whether each message needs a search, so the engine is only used when needed.");
+                    }
+
+                    ImGui.Spacing();
+                    if (ImGui.CollapsingHeader("Search Engine API Keys"))
+                    {
+                        if (ImGui.IsItemHovered()) ImGui.SetTooltip("API keys for the external search engines.\nThe selected engine is used first; when Search Engine Fallback is enabled, other engines with a key are tried once if it fails.");
+
+                        ImGui.Text("Exa API Key:");
+                        ImGui.SetNextItemWidth(610);
+                        ImGui.InputText("##profileExaApiKey", ref _profileExaApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
+
+                        ImGui.Text("Firecrawl API Key:");
+                        ImGui.SetNextItemWidth(610);
+                        ImGui.InputText("##profileFirecrawlApiKey", ref _profileFirecrawlApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
+
+                        ImGui.Text("Parallel API Key:");
+                        ImGui.SetNextItemWidth(610);
+                        ImGui.InputText("##profileParallelApiKey", ref _profileParallelApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
+
                         ImGui.Text("Tavily API Key:");
                         ImGui.SetNextItemWidth(610);
-                        ImGui.InputText("##profileTavilyApiKeyGemini", ref _profileTavilyApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
-                        ImGui.EndDisabled();
-                    }
-                    else if (_profileProviderBuffer == AiProviderType.OpenAICompatible)
-                    {
-                        ImGui.Spacing();
-                        ImGui.Text("Tavily API Key (For Web Search):");
-                        ImGui.SetNextItemWidth(610);
-                        ImGui.InputText("##profileTavilyApiKeyOpenAi", ref _profileTavilyApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
-                        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Optional. If provided, web search via Tavily is enabled.\nThe model decides whether each message needs a search, so Tavily is only used when needed.");
+                        ImGui.InputText("##profileTavilyApiKey", ref _profileTavilyApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
                     }
 
                     ImGui.Spacing();
@@ -231,8 +260,11 @@ namespace XIVAICompanion
                                  ApiKey = _profileApiKeyBuffer,
                                  ModelId = _profileModelIdBuffer,
                                  MaxTokens = _profileMaxTokensBuffer,
-                                 UseTavilyInstead = _profileUseTavilyInsteadBuffer,
+                                 SearchEngine = _profileSearchEngineBuffer,
                                  TavilyApiKey = _profileTavilyApiKeyBuffer,
+                                 ExaApiKey = _profileExaApiKeyBuffer,
+                                 ParallelApiKey = _profileParallelApiKeyBuffer,
+                                 FirecrawlApiKey = _profileFirecrawlApiKeyBuffer,
                                  UseAsFallback = _profileUseAsFallbackBuffer
                              };
 
@@ -287,8 +319,11 @@ namespace XIVAICompanion
                                  ApiKey = _profileApiKeyBuffer,
                                  ModelId = _profileModelIdBuffer,
                                  MaxTokens = _profileMaxTokensBuffer,
-                                 UseTavilyInstead = _profileUseTavilyInsteadBuffer,
+                                 SearchEngine = _profileSearchEngineBuffer,
                                  TavilyApiKey = _profileTavilyApiKeyBuffer,
+                                 ExaApiKey = _profileExaApiKeyBuffer,
+                                 ParallelApiKey = _profileParallelApiKeyBuffer,
+                                 FirecrawlApiKey = _profileFirecrawlApiKeyBuffer,
                                  UseAsFallback = _profileUseAsFallbackBuffer
                              };
 
@@ -318,8 +353,11 @@ namespace XIVAICompanion
                              ApiKey = profileToCopy.ApiKey,
                              ModelId = profileToCopy.ModelId,
                              MaxTokens = profileToCopy.MaxTokens,
-                             UseTavilyInstead = profileToCopy.UseTavilyInstead,
+                             SearchEngine = profileToCopy.SearchEngine,
                              TavilyApiKey = profileToCopy.TavilyApiKey,
+                             ExaApiKey = profileToCopy.ExaApiKey,
+                             ParallelApiKey = profileToCopy.ParallelApiKey,
+                             FirecrawlApiKey = profileToCopy.FirecrawlApiKey,
                              UseAsFallback = profileToCopy.UseAsFallback
                          };
                          configuration.ModelProfiles.Add(newProfile);
@@ -331,8 +369,11 @@ namespace XIVAICompanion
                          _profileApiKeyBuffer = newProfile.ApiKey;
                          _profileModelIdBuffer = newProfile.ModelId;
                          _profileMaxTokensBuffer = newProfile.MaxTokens;
-                         _profileUseTavilyInsteadBuffer = newProfile.UseTavilyInstead;
+                         _profileSearchEngineBuffer = newProfile.SearchEngine;
                          _profileTavilyApiKeyBuffer = newProfile.TavilyApiKey;
+                         _profileExaApiKeyBuffer = newProfile.ExaApiKey;
+                         _profileParallelApiKeyBuffer = newProfile.ParallelApiKey;
+                         _profileFirecrawlApiKeyBuffer = newProfile.FirecrawlApiKey;
                          _profileUseAsFallbackBuffer = newProfile.UseAsFallback;
                          
                          configuration.Save();
@@ -351,8 +392,11 @@ namespace XIVAICompanion
                             _profileApiKeyBuffer = string.Empty;
                             _profileModelIdBuffer = string.Empty;
                             _profileMaxTokensBuffer = 1024;
-                            _profileUseTavilyInsteadBuffer = false;
+                            _profileSearchEngineBuffer = SearchEngineType.Default;
                             _profileTavilyApiKeyBuffer = string.Empty;
+                            _profileExaApiKeyBuffer = string.Empty;
+                            _profileParallelApiKeyBuffer = string.Empty;
+                            _profileFirecrawlApiKeyBuffer = string.Empty;
                             configuration.Save();
                         }
                     }
@@ -811,6 +855,14 @@ namespace XIVAICompanion
                         ImGui.SetTooltip("If an API request fails, the plugin will try other saved models.");
                     }
 
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosX(380.0f);
+                    ImGui.Checkbox("Search Engine Fallback", ref _enableSearchEngineFallbackBuffer);
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("If the selected web search engine fails, the plugin will try other search engines that have an API key configured (one rotation).");
+                    }
+
                     ImGui.Separator();
                     ImGui.Text("Minion:");
                     ImGui.Checkbox("Enable Emote Mimicking", ref _enableMimickingBuffer);
@@ -884,6 +936,30 @@ namespace XIVAICompanion
             }
         }
 
+        private static string GetSearchEngineLabel(AiProviderType provider, SearchEngineType engine)
+        {
+            switch (engine)
+            {
+                case SearchEngineType.Exa: return "Exa";
+                case SearchEngineType.Firecrawl: return "Firecrawl";
+                case SearchEngineType.Parallel: return "Parallel";
+                case SearchEngineType.Tavily: return "Tavily";
+                default: return provider == AiProviderType.Gemini ? "Gemini (Google Search)" : "None";
+            }
+        }
+
+        private static List<(SearchEngineType Engine, string Label)> GetSearchEngineOptions(AiProviderType provider)
+        {
+            return new List<(SearchEngineType, string)>
+            {
+                (SearchEngineType.Default, provider == AiProviderType.Gemini ? "Gemini (Google Search)" : "None"),
+                (SearchEngineType.Exa, "Exa"),
+                (SearchEngineType.Firecrawl, "Firecrawl"),
+                (SearchEngineType.Parallel, "Parallel"),
+                (SearchEngineType.Tavily, "Tavily")
+            };
+        }
+
         private void SaveChanges()
         {
             var oldPersonaState = new
@@ -940,6 +1016,7 @@ namespace XIVAICompanion
             configuration.EnableConversationHistory = _enableHistoryBuffer;
             configuration.ConversationHistoryLimit = _conversationHistoryLimitBuffer;
             configuration.EnableAutoFallback = _enableAutoFallbackBuffer;
+            configuration.EnableSearchEngineFallback = _enableSearchEngineFallbackBuffer;
             configuration.UseCustomColors = _useCustomColorsBuffer;
             configuration.ForegroundColor = _foregroundColorBuffer;
             configuration.EnableInGameContext = _enableInGameContextBuffer;
