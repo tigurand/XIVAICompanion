@@ -819,6 +819,14 @@ namespace XIVAICompanion
                         ImGui.SetTooltip("If enabled, your minion will try to mimic your emotes.");
                     }
 
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosX(380.0f);
+                    ImGui.Checkbox("Use Pet Nicknames Plugin", ref _usePetNicknamesBuffer);
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip("If enabled, your minion's nickname will also be changed using the Pet Nicknames plugin.\nRequires the Pet Nicknames plugin to be installed and enabled.");
+                    }
+
                     ImGui.Separator();
                     ImGui.Text("UI:");
                     ImGui.Checkbox("Disable Automatic UI Hide.", ref _disableAutomaticUiHideBuffer);
@@ -936,6 +944,7 @@ namespace XIVAICompanion
             configuration.ForegroundColor = _foregroundColorBuffer;
             configuration.EnableInGameContext = _enableInGameContextBuffer;
             configuration.EnableMimicking = _enableMimickingBuffer;
+            configuration.UsePetNicknames = _usePetNicknamesBuffer;
             configuration.DisableAutomaticUiHide = _disableAutomaticUiHideBuffer;
             configuration.DisableCutsceneUiHide = _disableCutsceneUiHideBuffer;
             configuration.DisableGposeUiHide = _disableGposeUiHideBuffer;

@@ -50,6 +50,7 @@ namespace XIVAICompanion.Configurations
         public bool EnableAutoFallback { get; set; } = true;
         public bool EnableInGameContext { get; set; } = true;
         public bool EnableMimicking { get; set; } = true;
+        public bool UsePetNicknames { get; set; } = false;
         public bool DisableAutomaticUiHide { get; set; } = false;
         public bool DisableCutsceneUiHide { get; set; } = false;
         public bool DisableGposeUiHide { get; set; } = false;

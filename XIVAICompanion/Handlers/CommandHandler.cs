@@ -659,7 +659,7 @@ namespace XIVAICompanion
             else
             {
                 Service.Log.Info($"[Summon Command] Step 3/4: Summoning '{minionToSummon}'.");
-                if (IsPetRenamerEnabled()) await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage($"/petname set \"{minionToSummon}\" \"{minionAiName}\""));
+                if (IsPetRenamerEnabled() && configuration.UsePetNicknames) await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage($"/petname set \"{minionToSummon}\" \"{minionAiName}\""));
                 await Service.Framework.RunOnFrameworkThread(() => Chat.SendMessage($"/minion \"{minionToSummon}\""));
             }
 

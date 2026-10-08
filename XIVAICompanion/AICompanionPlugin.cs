@@ -146,6 +146,7 @@ namespace XIVAICompanion
         private bool _enableInGameContextBuffer;
 
         public bool _enableMimickingBuffer;
+        private bool _usePetNicknamesBuffer;
         private bool _disableAutomaticUiHideBuffer;
         private bool _disableCutsceneUiHideBuffer;
         private bool _disableGposeUiHideBuffer;
@@ -684,6 +685,7 @@ namespace XIVAICompanion
             _foregroundColorBuffer = configuration.ForegroundColor;
             _enableInGameContextBuffer = configuration.EnableInGameContext;
             _enableMimickingBuffer = configuration.EnableMimicking;
+            _usePetNicknamesBuffer = configuration.UsePetNicknames;
             _disableAutomaticUiHideBuffer = configuration.DisableAutomaticUiHide;
             _disableCutsceneUiHideBuffer = configuration.DisableCutsceneUiHide;
             _disableGposeUiHideBuffer = configuration.DisableGposeUiHide;
