@@ -15,17 +15,6 @@ namespace XIVAICompanion
 {
     public partial class AICompanionPlugin
     {
-        private static bool ContainsAnyIgnoreCase(string input, params string[] needles)
-        {
-            if (string.IsNullOrWhiteSpace(input)) return false;
-            foreach (var n in needles)
-            {
-                if (string.IsNullOrWhiteSpace(n)) continue;
-                if (input.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            }
-            return false;
-        }
-
         private static string BuildRecentConversationSnippetForSearch(List<Content>? conversationHistory, int maxTurns = 8, int maxChars = 1200)
         {
             if (conversationHistory == null || conversationHistory.Count == 0) return "(none)";
@@ -64,9 +53,9 @@ namespace XIVAICompanion
             return block.Trim();
         }
 
-        private async Task<string> ComposeTavilyQueryAsync(string userQuery, string systemPrompt, List<Content>? conversationHistory, ModelProfile profile)
+        private async Task<string?> DecideTavilyQueryAsync(string userQuery, string systemPrompt, List<Content>? conversationHistory, ModelProfile profile)
         {
-            if (string.IsNullOrWhiteSpace(userQuery)) return userQuery;
+            if (string.IsNullOrWhiteSpace(userQuery)) return null;
 
             try
             {
@@ -78,42 +67,47 @@ namespace XIVAICompanion
                 string gameContext = ExtractInGameContextBlockForSearch(systemPrompt);
                 string todayLocal = DateTime.Now.ToString("yyyy-MM-dd");
 
-                const string rewriteSystemPrompt =
-                    "You rewrite a user's conversational message into ONE web search query. " +
-                    "Return ONLY the query as plain text (no quotes, no markdown, no extra commentary).";
+                const string decideSystemPrompt =
+                    "You decide whether a chat message needs a live web search, and if so you rewrite it into ONE search query. " +
+                    "Reply with exactly NO_SEARCH when the message can be answered from the conversation and general knowledge " +
+                    "(casual chat, opinions, roleplay, or facts you already know). " +
+                    "Otherwise reply with ONE self-contained web search query that resolves pronouns and references using the conversation. " +
+                    "Output ONLY either NO_SEARCH or the query as plain text, with no quotes, markdown, or explanation.";
 
-                var rewriteUserPrompt = new StringBuilder();
-                rewriteUserPrompt.AppendLine("Rewrite the user's message into a self-contained web search query.");
-                rewriteUserPrompt.AppendLine("Rules:");
-                rewriteUserPrompt.AppendLine("- Make it explicit: include the game/app/topic name if implied by context.");
-                rewriteUserPrompt.AppendLine("- Prefer official/commonly-used terms.");
-                rewriteUserPrompt.AppendLine($"- If the user says 'today'/'now', include today's date: {todayLocal}.");
-                rewriteUserPrompt.AppendLine("- Keep it concise and clear.");
-                rewriteUserPrompt.AppendLine();
+                var decideUserPrompt = new StringBuilder();
+                decideUserPrompt.AppendLine("Decide whether the user's latest message requires up-to-date or external information from the web.");
+                decideUserPrompt.AppendLine("Rules:");
+                decideUserPrompt.AppendLine("- If a web search is NOT needed, reply exactly: NO_SEARCH");
+                decideUserPrompt.AppendLine("- If it IS needed, reply with ONE self-contained search query and nothing else.");
+                decideUserPrompt.AppendLine("- Resolve pronouns/references using the conversation (e.g. 'it' -> the subject currently being discussed).");
+                decideUserPrompt.AppendLine("- Make it explicit: include the game/app/topic name if implied by context.");
+                decideUserPrompt.AppendLine("- Prefer official/commonly-used terms and keep it concise.");
+                decideUserPrompt.AppendLine($"- If the user says 'today'/'now', include today's date: {todayLocal}.");
+                decideUserPrompt.AppendLine();
                 if (!string.IsNullOrWhiteSpace(gameContext))
                 {
-                    rewriteUserPrompt.AppendLine("Environment context:");
-                    rewriteUserPrompt.AppendLine(gameContext);
-                    rewriteUserPrompt.AppendLine();
+                    decideUserPrompt.AppendLine("Environment context:");
+                    decideUserPrompt.AppendLine(gameContext);
+                    decideUserPrompt.AppendLine();
                 }
-                rewriteUserPrompt.AppendLine("Recent conversation context:");
-                rewriteUserPrompt.AppendLine(recentConversation);
-                rewriteUserPrompt.AppendLine();
-                rewriteUserPrompt.AppendLine("User message:");
-                rewriteUserPrompt.AppendLine(userQuery.Trim());
+                decideUserPrompt.AppendLine("Recent conversation context:");
+                decideUserPrompt.AppendLine(recentConversation);
+                decideUserPrompt.AppendLine();
+                decideUserPrompt.AppendLine("User message:");
+                decideUserPrompt.AppendLine(userQuery.Trim());
 
-                var rewriteContents = new List<Content>
+                var decideContents = new List<Content>
                 {
-                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = rewriteSystemPrompt } } },
+                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = decideSystemPrompt } } },
                     new Content { Role = "model", Parts = new List<Part> { new Part { Text = "Understood." } } },
-                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = rewriteUserPrompt.ToString().TrimEnd() } } }
+                    new Content { Role = "user", Parts = new List<Part> { new Part { Text = decideUserPrompt.ToString().TrimEnd() } } }
                 };
 
-                var rewriteRequest = new ProviderRequest
+                var decideRequest = new ProviderRequest
                 {
                     Model = profile.ModelId,
-                    SystemPrompt = rewriteSystemPrompt,
-                    ConversationHistory = rewriteContents,
+                    SystemPrompt = decideSystemPrompt,
+                    ConversationHistory = decideContents,
                     MaxTokens = 128,
                     Temperature = 0.2,
                     UseWebSearch = false,
@@ -121,21 +115,26 @@ namespace XIVAICompanion
                     ShowThoughts = false
                 };
 
-                ProviderResult rewriteResult = await providerToUse.SendPromptAsync(rewriteRequest, profile, true);
-                string rewritten = (rewriteResult.ResponseText ?? string.Empty).Trim();
+                ProviderResult decideResult = await providerToUse.SendPromptAsync(decideRequest, profile);
+                string verdict = (decideResult.ResponseText ?? string.Empty).Trim();
 
-                rewritten = rewritten.Trim().Trim('"', '\'', '`');
-                rewritten = rewritten.Replace("\r", " ").Replace("\n", " ").Replace("  ", " ").Trim();
+                verdict = verdict.Trim().Trim('"', '\'', '`');
+                verdict = verdict.Replace("\r", " ").Replace("\n", " ").Replace("  ", " ").Trim();
 
-                if (string.IsNullOrWhiteSpace(rewritten)) return userQuery;
+                if (string.IsNullOrWhiteSpace(verdict)) return null;
+
+                string normalized = verdict.Replace("_", "").Replace("-", "").Replace(" ", "").Replace(".", "").Trim();
+                if (normalized.StartsWith("NOSEARCH", StringComparison.OrdinalIgnoreCase)) return null;
+
+                string rewritten = verdict;
                 if (rewritten.Length > 256) rewritten = rewritten.Substring(0, 256);
 
                 return rewritten;
             }
             catch (Exception ex)
             {
-                Service.Log.Warning($">> Tavily query rewrite failed; using raw query. Error: {ex.Message}");
-                return userQuery;
+                Service.Log.Warning($">> Tavily search decision failed; skipping web search to save credits. Error: {ex.Message}");
+                return null;
             }
         }
 
@@ -354,28 +353,29 @@ namespace XIVAICompanion
                     "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.";
             }
 
-            bool shouldPreSearchWithTavily = useWebSearch
-                && !string.IsNullOrEmpty(profile.TavilyApiKey)
+            bool isTavilySearchProfile = !string.IsNullOrEmpty(profile.TavilyApiKey)
                 && (profile.ProviderType == AiProviderType.OpenAICompatible
                     || (profile.ProviderType == AiProviderType.Gemini && profile.UseTavilyInstead));
 
-            bool didPreSearchWithTavily = false;
             bool usedTavilySearch = false;
-            if (shouldPreSearchWithTavily)
+            if (useWebSearch && isTavilySearchProfile)
             {
-                string tavilyQuery = await ComposeTavilyQueryAsync(currentPrompt, systemPrompt, conversationHistory, profile);
-                string tavilyResults = await TavilySearchHelper.SearchAsync(tavilyQuery, profile.TavilyApiKey);
-                const int maxTavilyChars = 6000;
-                if (!string.IsNullOrEmpty(tavilyResults) && tavilyResults.Length > maxTavilyChars)
-                    tavilyResults = tavilyResults.Substring(0, maxTavilyChars) + "\n... (truncated)";
+                string? tavilyQuery = await DecideTavilyQueryAsync(currentPrompt, systemPrompt, conversationHistory, profile);
+                if (!string.IsNullOrEmpty(tavilyQuery))
+                {
+                    string tavilyResults = await TavilySearchHelper.SearchAsync(tavilyQuery, profile.TavilyApiKey);
+                    const int maxTavilyChars = 6000;
+                    if (!string.IsNullOrEmpty(tavilyResults) && tavilyResults.Length > maxTavilyChars)
+                        tavilyResults = tavilyResults.Substring(0, maxTavilyChars) + "\n... (truncated)";
 
-                effectiveSystemPrompt += "\n\n[SYSTEM COMMAND: TAVILY WEB SEARCH]\n" +
-                                "Use the following web search results to answer the user, prefer them over prior knowledge.\n\n" +
-                                tavilyResults;
+                    effectiveSystemPrompt += "\n\n[SYSTEM COMMAND: TAVILY WEB SEARCH]\n" +
+                                    "Use the following web search results to answer the user, prefer them over prior knowledge.\n\n" +
+                                    tavilyResults;
+
+                    usedTavilySearch = true;
+                }
 
                 useWebSearch = false;
-                didPreSearchWithTavily = true;
-                usedTavilySearch = true;
             }
 
             if (!configuration.EnableConversationHistory)
@@ -440,116 +440,6 @@ namespace XIVAICompanion
                 IAiProvider providerToUse = profile.ProviderType == AiProviderType.Gemini ? (IAiProvider)new GeminiProvider(httpClient) : (IAiProvider)new OpenAiProvider(httpClient);
 
                 ProviderResult result = await providerToUse.SendPromptAsync(request, profile);
-
-                if (!didPreSearchWithTavily && result.WasSuccessful && result.ResponseJson != null)
-                {
-                    bool toolCalled = false;
-                    string searchQuery = string.Empty;
-
-                    // OpenAI-compatible tool calls (chat/completions)
-                    var toolCalls = result.ResponseJson.SelectToken("choices[0].message.tool_calls");
-                    if (toolCalls is JArray calls && calls.Count > 0)
-                    {
-                        var firstCall = calls[0];
-
-                        var functionName = firstCall?["function"]?["name"]?.Value<string>();
-                        if (functionName == "web_search")
-                        {
-                            var args = firstCall?["function"]?["arguments"]?.Value<string>();
-                            if (!string.IsNullOrWhiteSpace(args))
-                            {
-                                var parsedArgs = JObject.Parse(args);
-                                searchQuery = parsedArgs["query"]?.Value<string>() ?? string.Empty;
-                                toolCalled = true;
-                            }
-                        }
-                    }
-
-                    // OpenAI Responses API tool calls (output[].type == "function_call")
-                    if (!toolCalled)
-                    {
-                        var output = result.ResponseJson.SelectToken("output") as JArray;
-                        var firstCall = output?.FirstOrDefault(o => (string?)o?["type"] == "function_call");
-                        if (firstCall != null)
-                        {
-                            string? functionName = (string?)firstCall?["name"];
-                            if (functionName == "web_search")
-                            {
-                                string? args = (string?)firstCall?["arguments"];
-                                if (!string.IsNullOrWhiteSpace(args))
-                                {
-                                    var parsedArgs = JObject.Parse(args);
-                                    searchQuery = parsedArgs["query"]?.Value<string>() ?? string.Empty;
-                                    toolCalled = true;
-                                }
-                            }
-                        }
-                    }
-
-                    // Gemini Interactions API function calls (steps[].content[].type == "function_call")
-                    if (!toolCalled && profile.UseTavilyInstead && !string.IsNullOrEmpty(profile.TavilyApiKey))
-                    {
-                        var interactionSteps = result.ResponseJson.SelectToken("steps") as JArray;
-                        if (interactionSteps != null)
-                        {
-                            foreach (var step in interactionSteps)
-                            {
-                                var stepContent = step?["content"] as JArray;
-                                if (stepContent == null) continue;
-
-                                foreach (var block in stepContent)
-                                {
-                                    bool isFunctionCall =
-                                        string.Equals((string?)block?["type"], "function_call", StringComparison.OrdinalIgnoreCase)
-                                        || block?["functionCall"] != null
-                                        || block?["function_call"] != null;
-                                    if (!isFunctionCall) continue;
-
-                                    string? functionName = (string?)block?["name"]
-                                        ?? (string?)block?["functionCall"]?["name"]
-                                        ?? (string?)block?["function_call"]?["name"];
-                                    if (functionName != "web_search") continue;
-
-                                    var argsToken = block?["args"] ?? block?["arguments"]
-                                        ?? block?["functionCall"]?["args"] ?? block?["function_call"]?["args"];
-                                    if (argsToken == null) continue;
-
-                                    JObject? parsedArgs = argsToken as JObject;
-                                    if (parsedArgs == null)
-                                    {
-                                        string argsStr = argsToken.ToString();
-                                        if (string.IsNullOrWhiteSpace(argsStr)) continue;
-                                        try { parsedArgs = JObject.Parse(argsStr); } catch { continue; }
-                                    }
-
-                                    searchQuery = parsedArgs["query"]?.Value<string>() ?? string.Empty;
-                                    toolCalled = true;
-                                    break;
-                                }
-                                if (toolCalled) break;
-                            }
-                        }
-                    }
-
-                    if (toolCalled && !string.IsNullOrEmpty(searchQuery))
-                    {
-                        string searchQueryToUse = searchQuery;
-
-                        if (!string.IsNullOrEmpty(profile.TavilyApiKey)
-                            && !ContainsAnyIgnoreCase(searchQuery, "ffxiv", "final fantasy xiv", "ff14", "final fantasy 14"))
-                        {
-                            searchQueryToUse = await ComposeTavilyQueryAsync(searchQuery, systemPrompt, request.ConversationHistory, profile);
-                        }
-
-                        Service.Log.Info($">> Web search: '{searchQuery}' => '{searchQueryToUse}'");
-                        string searchResults = await TavilySearchHelper.SearchAsync(searchQueryToUse, profile.TavilyApiKey);
-                        usedTavilySearch = true;
-                        var followUpHistory = new List<Content>(request.ConversationHistory);
-                        followUpHistory.Add(new Content { Role = "model", Parts = new List<Part> { new Part { Text = (profile.ProviderType == AiProviderType.OpenAICompatible ? "TOOL_RESPONSE: " : "SEARCH_RESULTS: ") + searchResults } } });
-                        request.ConversationHistory = followUpHistory;
-                        result = await providerToUse.SendPromptAsync(request, profile, true);
-                    }
-                }
 
                 if (!result.WasSuccessful)
                 {
@@ -632,6 +522,10 @@ namespace XIVAICompanion
                 else if (usedTavilySearch)
                 {
                     webSearchInfo = "Tavily";
+                }
+                else if (isTavilySearchProfile)
+                {
+                    webSearchInfo = "Tavily (not needed)";
                 }
                 else if (providerToUse.Name == "Gemini")
                 {

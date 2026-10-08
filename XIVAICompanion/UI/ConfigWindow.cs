@@ -200,7 +200,7 @@ namespace XIVAICompanion
                     if (_profileProviderBuffer == AiProviderType.Gemini)
                     {
                         ImGui.Checkbox("Use Tavily instead of Google?", ref _profileUseTavilyInsteadBuffer);
-                        if (ImGui.IsItemHovered()) ImGui.SetTooltip("If checked, Tavily will be used for web search instead of Gemini's built-in Google Search.");
+                        if (ImGui.IsItemHovered()) ImGui.SetTooltip("If checked, Tavily will be used for web search instead of Gemini's built-in Google Search.\nTavily is only used when the model decides a web search is needed.");
                         
                         ImGui.BeginDisabled(!_profileUseTavilyInsteadBuffer);
                         ImGui.Text("Tavily API Key:");
@@ -214,7 +214,7 @@ namespace XIVAICompanion
                         ImGui.Text("Tavily API Key (For Web Search):");
                         ImGui.SetNextItemWidth(610);
                         ImGui.InputText("##profileTavilyApiKeyOpenAi", ref _profileTavilyApiKeyBuffer, 256, ImGuiInputTextFlags.Password);
-                        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Optional. If provided, the model can use Tavily to search the web.\nMay work or not depending on the model.");
+                        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Optional. If provided, web search via Tavily is enabled.\nThe model decides whether each message needs a search, so Tavily is only used when needed.");
                     }
 
                     ImGui.Spacing();

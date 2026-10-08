@@ -34,11 +34,6 @@ namespace XIVAICompanion.Providers
 
         public async Task<ProviderResult> SendPromptAsync(ProviderRequest request, ModelProfile profile)
         {
-            return await SendPromptAsync(request, profile, false);
-        }
-
-        public async Task<ProviderResult> SendPromptAsync(ProviderRequest request, ModelProfile profile, bool skipToolDetection)
-        {
             var result = new ProviderResult
             {
                 ModelUsed = profile.ModelId,
@@ -151,61 +146,6 @@ namespace XIVAICompanion.Providers
                         openAiRequest["reasoning_effort"] = ProviderConstants.OpenAIReasoningEffort;
                     else if (modelInfo.IsGLM || modelInfo.IsQwen)
                         openAiRequest["disable_reasoning"] = "false";
-                }
-            }
-
-            if (request.UseWebSearch && !string.IsNullOrEmpty(profile.TavilyApiKey))
-            {
-                if (useResponsesApi)
-                {
-                    var searchTool = new JObject
-                    {
-                        ["type"] = "function",
-                        ["name"] = "web_search",
-                        ["description"] = "Search the web for current information using Tavily.",
-                        ["parameters"] = new JObject
-                        {
-                            ["type"] = "object",
-                            ["properties"] = new JObject
-                            {
-                                ["query"] = new JObject
-                                {
-                                    ["type"] = "string",
-                                    ["description"] = "The search query"
-                                }
-                            },
-                            ["required"] = new JArray { "query" }
-                        }
-                    };
-                    openAiRequest["tools"] = new JArray { searchTool };
-                    openAiRequest["tool_choice"] = "auto";
-                }
-                else
-                {
-                    var searchTool = new JObject
-                    {
-                        ["type"] = "function",
-                        ["function"] = new JObject
-                        {
-                            ["name"] = "web_search",
-                            ["description"] = "Search the web for current information using Tavily.",
-                            ["parameters"] = new JObject
-                            {
-                                ["type"] = "object",
-                                ["properties"] = new JObject
-                                {
-                                    ["query"] = new JObject
-                                    {
-                                        ["type"] = "string",
-                                        ["description"] = "The search query"
-                                    }
-                                },
-                                ["required"] = new JArray { "query" }
-                            }
-                        }
-                    };
-                    openAiRequest["tools"] = new JArray { searchTool };
-                    openAiRequest["tool_choice"] = "auto";
                 }
             }
 

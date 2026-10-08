@@ -26,11 +26,6 @@ namespace XIVAICompanion.Providers
 
         public async Task<ProviderResult> SendPromptAsync(ProviderRequest request, ModelProfile profile)
         {
-            return await SendPromptAsync(request, profile, false);
-        }
-
-        public async Task<ProviderResult> SendPromptAsync(ProviderRequest request, ModelProfile profile, bool skipToolDetection)
-        {
             var result = new ProviderResult
             {
                 ModelUsed = profile.ModelId,
@@ -112,34 +107,11 @@ namespace XIVAICompanion.Providers
 
             if (request.UseWebSearch)
             {
-                if (profile.UseTavilyInstead && !string.IsNullOrEmpty(profile.TavilyApiKey))
+                interactionRequest.Tools = new List<Tool>
                 {
-                    interactionRequest.Tools = new List<Tool>
-                    {
-                        new Tool { Type = "function", FunctionDeclarations = new List<FunctionDeclaration>
-                        {
-                            new FunctionDeclaration
-                            {
-                                Name = "web_search",
-                                Description = "Search the web for current information using Tavily.",
-                                Parameters = new
-                                {
-                                    type = "OBJECT",
-                                    properties = new { query = new { type = "STRING", description = "The search query" } },
-                                    required = new[] { "query" }
-                                }
-                            }
-                        } }
-                    };
-                }
-                else
-                {
-                    interactionRequest.Tools = new List<Tool>
-                    {
-                        new Tool { Type = "google_search" },
-                        new Tool { Type = "url_context" }
-                    };
-                }
+                    new Tool { Type = "google_search" },
+                    new Tool { Type = "url_context" }
+                };
             }
 
             try
