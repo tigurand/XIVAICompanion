@@ -38,9 +38,11 @@ namespace XIVAICompanion.Emoting
         {
             if (character == null) return;
 
+            var characterName = GetCharacterNameSafe(character);
+
             Task.Run(async () =>
             {
-                ApplyAnimation(character, animationId);
+                ApplyAnimation(character, animationId, characterName);
                 await Task.Delay(duration);
                 StopEmote(character);
             });
@@ -50,6 +52,7 @@ namespace XIVAICompanion.Emoting
         {
             if (player == null || character == null) return;
 
+            var characterName = GetCharacterNameSafe(character);
             var gameObjectId = (uint)character.GameObjectId;
 
             EmoteState newState;
@@ -102,7 +105,7 @@ namespace XIVAICompanion.Emoting
             {
                 try
                 {
-                    ApplyAnimation(character, animationId);
+                    ApplyAnimation(character, animationId, characterName);
                     Vector3 startPos = player.Position;
 
                     await Task.Delay(300, cts.Token);
@@ -148,6 +151,8 @@ namespace XIVAICompanion.Emoting
         {
             if (character == null) return;
 
+            var characterName = GetCharacterNameSafe(character);
+
             try
             {
                 unsafe
@@ -170,7 +175,7 @@ namespace XIVAICompanion.Emoting
             catch (Exception ex)
             {
                 Service.Log.Error(ex, "Error in force stop emote");
-                ApplyAnimation(character, 0);
+                ApplyAnimation(character, 0, characterName);
             }
         }
 
@@ -196,7 +201,20 @@ namespace XIVAICompanion.Emoting
             }
         }
 
-        private unsafe void ApplyAnimation(ICharacter character, ushort animationId)
+        private static string GetCharacterNameSafe(ICharacter character)
+        {
+            try
+            {
+                var name = character.Name?.ToString();
+                return string.IsNullOrEmpty(name) ? "unknown" : name;
+            }
+            catch (Exception)
+            {
+                return "unknown";
+            }
+        }
+
+        private unsafe void ApplyAnimation(ICharacter character, ushort animationId, string characterName = "unknown")
         {
             if (character == null) return;
 
@@ -226,7 +244,7 @@ namespace XIVAICompanion.Emoting
                     IsMinionGroundSitOrSleep = false;
                 }
 
-                Service.Log.Info($"Applying animation {animationId} to actor {character.Name}");
+                Service.Log.Info($"Applying animation {animationId} to actor {characterName}");
             }
             catch (Exception ex)
             {
