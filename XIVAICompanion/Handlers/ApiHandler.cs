@@ -390,6 +390,7 @@ namespace XIVAICompanion
             string currentPrompt = input.Replace('　', ' ').Trim();
 
             bool isSearch = (configuration.SearchMode || tempSearchMode) && !isFreshLogin;
+            bool forceSearch = tempSearchMode && !isFreshLogin;
             bool isThink = (configuration.ThinkMode || tempThinkMode) && !isFreshLogin;
             bool isFresh = (_chatFreshMode || tempFreshMode) && !isFreshLogin;
             bool isWhisper = (_chatWhisperMode || tempWhisperMode) && !isFreshLogin;
@@ -406,6 +407,11 @@ namespace XIVAICompanion
                 "2.  **SECONDARY DIRECTIVE:** If needed, immediately use the Google Search tool to answer the *entire* User Message.\n" +
                 "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.";
 
+            const string googleSearchForcedCommand = "\n\n[SYSTEM COMMAND: GOOGLE SEARCH - REQUIRED]\n" +
+                "1.  **PRIMARY DIRECTIVE:** You MUST use the Google Search tool now to answer the *entire* User Message.\n" +
+                "2.  **SECONDARY DIRECTIVE:** Do not rely on prior knowledge alone; base your answer on the fresh search results you retrieve.\n" +
+                "3.  **RULES:** Do not converse. Do not acknowledge. Provide a direct, synthesized answer from the search results.";
+
             SearchEngineType selectedSearchEngine = profile.SearchEngine;
             bool usedGoogleSearch = false;
             bool usedExternalSearch = false;
@@ -420,39 +426,55 @@ namespace XIVAICompanion
                 {
                     if (profile.ProviderType == AiProviderType.Gemini)
                     {
-                        effectiveSystemPrompt += googleSearchCommand;
+                        effectiveSystemPrompt += forceSearch ? googleSearchForcedCommand : googleSearchCommand;
                         usedGoogleSearch = true;
                     }
                 }
                 else
                 {
                     var searchEngineOrder = BuildSearchEngineOrder(profile, selectedSearchEngine);
+                    bool geminiFallbackAvailable = profile.ProviderType == AiProviderType.Gemini;
 
                     if (searchEngineOrder.Count == 0)
                     {
-                        if (profile.ProviderType == AiProviderType.Gemini)
+                        if (geminiFallbackAvailable)
                         {
-                            effectiveSystemPrompt += googleSearchCommand;
+                            effectiveSystemPrompt += forceSearch ? googleSearchForcedCommand : googleSearchCommand;
                             usedGoogleSearch = true;
+                            useWebSearch = forceSearch;
+                        }
+                        else
+                        {
+                            useWebSearch = false;
                         }
                     }
                     else
                     {
                         externalSearchAttempted = true;
-                        SearchQueryDecision decision = await DecideSearchQueryAsync(currentPrompt, systemPrompt, conversationHistory, profile);
-                        string? searchQuery = decision.Query;
+                        string? searchQuery;
 
-                        if (decision.Failed)
+                        if (forceSearch)
                         {
-                            searchDecisionFailed = true;
                             searchQuery = currentPrompt;
                         }
-
-                        if (string.IsNullOrEmpty(searchQuery))
-                        {
-                            searchDecisionSkipped = true;
-                        }
                         else
+                        {
+                            SearchQueryDecision decision = await DecideSearchQueryAsync(currentPrompt, systemPrompt, conversationHistory, profile);
+                            searchQuery = decision.Query;
+
+                            if (decision.Failed)
+                            {
+                                searchDecisionFailed = true;
+                                searchQuery = currentPrompt;
+                            }
+
+                            if (string.IsNullOrEmpty(searchQuery))
+                            {
+                                searchDecisionSkipped = true;
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(searchQuery))
                         {
                             foreach (var engine in searchEngineOrder)
                             {
@@ -479,9 +501,18 @@ namespace XIVAICompanion
                                 if (!configuration.EnableSearchEngineFallback) break;
                             }
                         }
-                    }
 
-                    useWebSearch = false;
+                        if (forceSearch && !usedExternalSearch && geminiFallbackAvailable)
+                        {
+                            effectiveSystemPrompt += googleSearchForcedCommand;
+                            usedGoogleSearch = true;
+                            useWebSearch = true;
+                        }
+                        else
+                        {
+                            useWebSearch = false;
+                        }
+                    }
                 }
             }
 

@@ -340,7 +340,8 @@ namespace XIVAICompanion
 
             Service.CommandManager.AddHandler("/aisearch", new CommandInfo(OnCommand)
             {
-                HelpMessage = "Uses Web Search for information from the internet.",
+                HelpMessage = "Force the AI to search the web for information: /aisearch <query>\n" +
+                    "When web search is always enabled, the AI decides whether a search is needed.",
                 ShowInHelp = true
             });
 
