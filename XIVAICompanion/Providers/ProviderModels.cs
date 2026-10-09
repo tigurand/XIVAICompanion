@@ -17,6 +17,7 @@ namespace XIVAICompanion.Providers
         public int? ThinkingBudget { get; set; }
         public bool ShowThoughts { get; set; }
         public bool IsThinkingEnabled { get; set; }
+        public bool UseModelDefaultThinking { get; set; }
     }
 
     public class ProviderResult
@@ -61,7 +62,16 @@ namespace XIVAICompanion.Providers
 
     public static class ProviderConstants
     {
-        public const string OpenAIReasoningEffort = "high";
+        // Reasoning effort used when "thinking mode" is ON.
+        // Group 1 (OpenAI, DeepSeek, HuggingFace, OpenRouter) supports "max".
+        public const string OpenAIReasoningEffortMax = "max";
+
+        // Everything else (Groq, Cerebras and any other provider) uses "high".
+        public const string OpenAIReasoningEffortHigh = "high";
+
+        // Reasoning effort used when "thinking mode" is OFF.
+        // Matches the documented Gemini default so all OpenAI-compatible providers stay consistent.
+        public const string OpenAIReasoningEffortDefault = "medium";
 
         // Gemini thinking_level ("minimal"|"low"|"medium"|"high").
         public const string GeminiThinkingLevel = "high";

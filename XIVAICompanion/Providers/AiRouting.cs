@@ -20,6 +20,7 @@ namespace XIVAICompanion.Providers
         public readonly bool IsGroq;
         public readonly bool IsHuggingFace;
         public readonly bool IsCerebras;
+        public readonly bool IsDeepSeek;
 
         public OpenAICompatibleHostInfo(string? baseUrl)
         {
@@ -29,9 +30,13 @@ namespace XIVAICompanion.Providers
             IsGroq = baseUrlLower.Contains("groq.com");
             IsHuggingFace = baseUrlLower.Contains("huggingface.co");
             IsCerebras = baseUrlLower.Contains("cerebras.ai");
+            IsDeepSeek = baseUrlLower.Contains("deepseek");
         }
 
         public bool UsesResponsesApi => IsOpenAi || IsHuggingFace;
+
+        // Hosts that support the "max" reasoning effort when thinking mode is enabled.
+        public bool SupportsMaxReasoningEffort => IsOpenAi || IsOpenRouter || IsHuggingFace || IsDeepSeek;
     }
 
     internal readonly struct OpenAICompatibleModelInfo
@@ -60,6 +65,13 @@ namespace XIVAICompanion.Providers
             return host.UsesResponsesApi
                 ? $"{baseUrl}/responses"
                 : $"{baseUrl}/chat/completions";
+        }
+
+        public static string GetOpenAiReasoningEffort(OpenAICompatibleHostInfo host)
+        {
+            return host.SupportsMaxReasoningEffort
+                ? ProviderConstants.OpenAIReasoningEffortMax
+                : ProviderConstants.OpenAIReasoningEffortHigh;
         }
     }
 }

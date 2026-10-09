@@ -235,9 +235,10 @@ namespace XIVAICompanion
                 return;
             }
 
-            foreach (var profile in profilesToTry)
+            for (int i = 0; i < profilesToTry.Count; i++)
             {
-                ProviderResult result = await SendPromptInternal(input, profile, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isLogin, tempSearchMode, tempThinkMode, tempFreshMode, tempWhisperMode);
+                var profile = profilesToTry[i];
+                ProviderResult result = await SendPromptInternal(input, profile, isStateless, outputTarget, systemPrompt, removeLineBreaks, showAdditionalInfo, false, null, conversationHistory, isLogin, tempSearchMode, tempThinkMode, tempFreshMode, tempWhisperMode, i > 0);
                 if (result.WasSuccessful) return;
                 failedAttempts.Add((profile, result));
 
@@ -292,9 +293,10 @@ namespace XIVAICompanion
 
                 if (profilesToTry.Count == 0) return;
 
-                foreach (var profile in profilesToTry)
+                for (int i = 0; i < profilesToTry.Count; i++)
                 {
-                    ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
+                    var profile = profilesToTry[i];
+                    ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false, i > 0);
                     if (result.WasSuccessful)
                     {
                         _lastRpResponseTimestamp = DateTime.Now;
@@ -358,9 +360,10 @@ namespace XIVAICompanion
 
                 if (profilesToTry.Count == 0) return;
 
-                foreach (var profile in profilesToTry)
+                for (int i = 0; i < profilesToTry.Count; i++)
                 {
-                    ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false);
+                    var profile = profilesToTry[i];
+                    ProviderResult result = await SendPromptInternal(capturedMessage, profile, false, outputTarget, finalRpSystemPrompt, removeLineBreaks, showAdditionalInfo, true, sourceType, conversationHistory, false, false, false, false, i > 0);
                     if (result.WasSuccessful)
                     {
                         _lastRpResponseTimestamp = DateTime.Now;
@@ -381,7 +384,7 @@ namespace XIVAICompanion
 
         private async Task<ProviderResult> SendPromptInternal(string input, ModelProfile profile, bool isStateless, OutputTarget outputTarget, string systemPrompt,
                                                  bool removeLineBreaks, bool showAdditionalInfo, bool forceHistory = false, XivChatType? replyChannel = null,
-                                                 List<Content>? conversationHistory = null, bool isFreshLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempWhisperMode = false)
+                                                 List<Content>? conversationHistory = null, bool isFreshLogin = false, bool tempSearchMode = false, bool tempThinkMode = false, bool tempFreshMode = false, bool tempWhisperMode = false, bool isFallbackAttempt = false)
         {
             int responseTokensToUse = profile.MaxTokens;
             string currentPrompt = input.Replace('　', ' ').Trim();
@@ -536,7 +539,8 @@ namespace XIVAICompanion
                 UseWebSearch = useWebSearch,
                 ThinkingBudget = thinkingBudget,
                 ShowThoughts = configuration.ShowThoughts,
-                IsThinkingEnabled = isThink
+                IsThinkingEnabled = isThink,
+                UseModelDefaultThinking = isFallbackAttempt
             };
 
             try
@@ -604,13 +608,21 @@ namespace XIVAICompanion
 
                 var geminiModelInfo = new GeminiModelInfo(profile.ModelId);
 
+                string logBaseUrl = profile.BaseUrl?.TrimEnd('/') ?? string.Empty;
+                if (string.IsNullOrEmpty(logBaseUrl)) logBaseUrl = "https://api.openai.com/v1";
+                var logHost = new OpenAICompatibleHostInfo(logBaseUrl);
+
                 string reasoningInfo =
                     providerToUse.Name == "OpenAICompatible"
-                        ? (isThink
-                            ? $"ReasoningEffort='{ProviderConstants.OpenAIReasoningEffort}'"
-                            : "ReasoningEffort='none'")
+                        ? (isFallbackAttempt
+                            ? "ReasoningEffort=<model default>"
+                            : (isThink
+                                ? $"ReasoningEffort='{AiRouting.GetOpenAiReasoningEffort(logHost)}'"
+                                : $"ReasoningEffort='{ProviderConstants.OpenAIReasoningEffortDefault}'"))
                         : geminiModelInfo.IsGemini3
-                            ? $"ThinkingLevel='{(isThink ? ProviderConstants.GeminiThinkingLevel : ProviderConstants.GeminiThinkingLevelDefault)}'"
+                            ? (isFallbackAttempt
+                                ? "ThinkingLevel=<model default>"
+                                : $"ThinkingLevel='{(isThink ? ProviderConstants.GeminiThinkingLevel : ProviderConstants.GeminiThinkingLevelDefault)}'")
                             : "ThinkingLevel=<model default>";
 
                 // temperature/top_p/top_k are deprecated by Google for Gemini, only report the value for OpenAI-compatible providers.

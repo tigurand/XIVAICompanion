@@ -74,7 +74,7 @@ namespace XIVAICompanion.Providers
                 MaxOutputTokens = request.MaxTokens
             };
 
-            if (modelInfo.IsGemini3)
+            if (modelInfo.IsGemini3 && !request.UseModelDefaultThinking)
             {
                 generationConfig.ThinkingLevel = request.IsThinkingEnabled
                     ? ProviderConstants.GeminiThinkingLevel

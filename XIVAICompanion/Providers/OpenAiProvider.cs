@@ -112,14 +112,18 @@ namespace XIVAICompanion.Providers
                 };
             }
 
-            if (request.IsThinkingEnabled)
+            if (!request.UseModelDefaultThinking)
             {
-                if (host.IsOpenAi || host.IsHuggingFace || host.IsOpenRouter)
+                string effort = request.IsThinkingEnabled
+                    ? AiRouting.GetOpenAiReasoningEffort(host)
+                    : ProviderConstants.OpenAIReasoningEffortDefault;
+
+                if (host.IsOpenAi || host.IsHuggingFace || host.IsOpenRouter || host.IsDeepSeek)
                 {
                     var reasoning = GetReasoning(openAiRequest);
-                    reasoning["effort"] = ProviderConstants.OpenAIReasoningEffort;
+                    reasoning["effort"] = effort;
 
-                    if (request.ShowThoughts)
+                    if (request.IsThinkingEnabled && request.ShowThoughts)
                     {
                         if (host.IsOpenAi || host.IsHuggingFace)
                         {
@@ -131,21 +135,14 @@ namespace XIVAICompanion.Providers
                         }
                     }
                 }
-                else if (host.IsGroq)
+                else
                 {
-                    openAiRequest["reasoning_effort"] = ProviderConstants.OpenAIReasoningEffort;
+                    openAiRequest["reasoning_effort"] = effort;
 
-                    if (request.ShowThoughts)
+                    if (request.IsThinkingEnabled && request.ShowThoughts && host.IsGroq)
                     {
                         openAiRequest["reasoning_format"] = "parsed";
                     }
-                }
-                else if (host.IsCerebras)
-                {
-                    if (modelInfo.IsGPTOSS)
-                        openAiRequest["reasoning_effort"] = ProviderConstants.OpenAIReasoningEffort;
-                    else if (modelInfo.IsGLM || modelInfo.IsQwen)
-                        openAiRequest["disable_reasoning"] = "false";
                 }
             }
 
